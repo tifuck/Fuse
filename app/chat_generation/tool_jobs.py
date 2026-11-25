@@ -114,9 +114,12 @@ def _redact_tool_args(name: str, arguments: str) -> str:
     if not isinstance(parsed, dict):
         return '{"html":"[redacted]"}'
     # Only page text is stored elsewhere (read_artifact returns it); a
-    # title-only update keeps no made-up content field.
-    for key in ("html", "markdown"):
+    # title-only update keeps no made-up content field. Choices go too: their
+    # backdrops and logos are pages of markup the next turn does not need.
+    for key in ("html", "markdown", "choices"):
         value = parsed.get(key)
+        if isinstance(value, dict):
+            value = json.dumps(value, ensure_ascii=False)
         if isinstance(value, str):
             parsed[key] = f"[stored, {len(value)} chars]"
         elif isinstance(value, list):
@@ -572,8 +575,9 @@ def _running_event(job: ToolJob) -> dict:
         vis = str(parsed.get("visibility") or "")
         if vis in ("private", "public"):
             event["visibility"] = vis
-        # A chart is inline unless the call says panel (artifacts.execute_from_tool).
-        if parsed.get("display") == "inline" or (parsed.get("chart") is not None and parsed.get("display") != "panel"):
+        # A chart or choices is inline unless the call says panel (artifacts.execute_from_tool).
+        inline_kind = parsed.get("chart") is not None or parsed.get("choices") is not None
+        if parsed.get("display") == "inline" or (inline_kind and parsed.get("display") != "panel"):
             event["display"] = "inline"
         # A host list reaching here was refused (valid ones are split per host).
         host = parsed.get("host") if isinstance(parsed.get("host"), str) else ""

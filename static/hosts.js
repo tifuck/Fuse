@@ -853,8 +853,11 @@
         return;
       }
       if (data.type === "host") {
+        // Only a machine new to this page is the pairing finishing; known
+        // connectors send this on every reconnect and drop.
+        const fresh = data.host && !(bundle.hosts || []).some((h) => h.id === data.host.id);
         upsertHost(data.host);
-        if (activePairing && data.host && data.host.kind === "agent") {
+        if (activePairing && fresh && data.host.kind === "agent") {
           window.fuseSound?.play("done", { event: true });
           closeConnector();
         }

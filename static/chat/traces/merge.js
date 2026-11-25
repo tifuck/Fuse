@@ -202,7 +202,7 @@ export function createMerge(ctx) {
     if (trace.visibility === "public" || trace.visibility === "private") rec.visibility = trace.visibility;
     if (trace.version != null && Number.isFinite(Number(trace.version))) rec.version = Number(trace.version);
     if (trace.icon) rec.icon = String(trace.icon).slice(0, 16);
-    if (trace.format === "html" || trace.format === "markdown" || trace.format === "chart") rec.format = trace.format;
+    if (["html", "markdown", "chart", "choices"].includes(trace.format)) rec.format = trace.format;
     if (trace.display === "inline" || trace.display === "panel") rec.display = trace.display;
     if (trace.host) rec.host = String(trace.host).slice(0, 40);
     if (trace.path) rec.path = String(trace.path).slice(0, 400);

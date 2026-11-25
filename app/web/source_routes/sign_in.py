@@ -41,9 +41,23 @@ async def revoke(request: Request, pid: str, cred_id: int, *, back: str = "/sour
         raise HTTPException(404, "Not found")
     if row["donated_by"] != user["id"] and not user["is_admin"]:
         raise HTTPException(403, "Forbidden")
-    if spec.revoke_upstream:
-        await spec.revoke_upstream(row)
-    importlib.import_module(f"app.sources.{pid}").disable_credential(cred_id)
+    if spec.keyed:
+        # A personal API key is its owner's alone (keys.key_revoke); site keys
+        # are removed on the admin page.
+        from ...sources import keyed
+
+        if not keyed.remove_key(pid, cred_id, user_id=user["id"]):
+            raise HTTPException(404, "Not found")
+    else:
+        try:
+            disable = getattr(importlib.import_module(f"app.sources.{pid}"), "disable_credential", None)
+        except ModuleNotFoundError:
+            disable = None
+        if disable is None:
+            raise HTTPException(404, "Not found")
+        if spec.revoke_upstream:
+            await spec.revoke_upstream(row)
+        disable(cred_id)
     invalidate_model_cache(pid)
     if spec.removed_copy:
         _pool_flash[user["id"]] = ("ok", spec.removed_copy, pid)

@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 _conns: dict[tuple[int, int], dict] = {}
 _held: dict[tuple[int, int], dict] = {}
-# Waiters for a host's socket, woken when it comes up (calls polled every
-# 250 ms). One event per waiter: an event never outlives its loop.
+# Waiters for a host's socket, woken when it comes up. One event per waiter:
+# an event never outlives its loop.
 _online: dict[tuple[int, int], set[asyncio.Event]] = {}
 _background: set[asyncio.Task] = set()
 _cancel_replay: dict[tuple[int, int], dict[str, float]] = {}
@@ -28,7 +28,11 @@ CANCEL_REPLAY_CAP = 4096
 _lock = asyncio.Lock()
 MAX_INFLIGHT = 128
 HELLO_TIMEOUT = 15.0
-HOLD_SECONDS = 8.0
+# How long jobs in flight when a socket drops stay parked for the same
+# connector process to come back with their results. It must outlast the
+# connector noticing the dead link (ping 20 s + pong 15 s) plus its reconnect,
+# or healthy long commands are failed and their cancel is replayed.
+HOLD_SECONDS = 60.0
 # A connector reconnects by itself after its socket drops or Fuse restarts,
 # usually within seconds (backoff plus TLS). A call in that gap waits for it
 # rather than failing "agent is offline" on a host that is back moments
@@ -79,9 +83,11 @@ def _reconnect_wait(key: tuple[int, int], timeout: float) -> float:
     """How long a call may wait for this host's socket to come back: the
     hold for parked jobs, else the reconnect window's wait, never longer
     than the call's own timeout."""
-    if key in _held:
-        return HOLD_SECONDS
     now = time.monotonic()
+    held = _held.get(key)
+    if held is not None:
+        left = held.get("until", now + HOLD_SECONDS) - now
+        return min(max(0.0, left), RECONNECT_WAIT, max(1.0, float(timeout)))
     for since in (_dropped_at.get(key), _started_at):
         if since is not None and 0 <= now - since < RECONNECT_WINDOW:
             return min(RECONNECT_WAIT, max(1.0, float(timeout)))
@@ -255,7 +261,8 @@ async def _finish_rec(rec: dict, reason: str) -> None:
 async def _hold_pending(key: tuple[int, int], pending: dict, chunks=None, inst: str = "") -> None:
     if not pending:
         return
-    rec = {"pending": dict(pending), "chunks": {k: v for k, v in (chunks or {}).items() if k in pending}, "task": None, "user_id": key[0], "host_id": key[1], "inst": inst}
+    rec = {"pending": dict(pending), "chunks": {k: v for k, v in (chunks or {}).items() if k in pending}, "task": None,
+           "user_id": key[0], "host_id": key[1], "inst": inst, "until": time.monotonic() + HOLD_SECONDS}
     pending.clear()
     async with _lock:
         live = _conns.get(key)
@@ -744,7 +751,7 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
         (rec["pending"] if _same_process(old, inst) else orphaned).update(old.get("pending") or {})
         rec.setdefault("chunks", {}).update(old.get("chunks") or {})
         old.get("pending", {}).clear()
-        await _close_ws(old.get("ws"), "replaced")
+        _spawn(_close_ws(old.get("ws"), "replaced"))
     _fail_pending(orphaned, _RESTARTED)
     # Bookkeeping DB writes run beside the receive loop: results for jobs
     # sent the moment the socket is registered must not wait on them.
@@ -752,13 +759,14 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
     _background.add(task)
     task.add_done_callback(_background.discard)
     try:
+        # Sent beside the receive loop: results for jobs routed here the
+        # moment the socket registered must not wait behind these writes.
         replay = _cancel_replay.get(key, {})
-        await _cancel_pending(ws, {i: None for i, deadline in replay.items() if deadline > time.monotonic()})
         listed = msg.get("ptys") if isinstance(msg.get("ptys"), list) else []
         orphans = {str(i): None for i in listed[:ORPHAN_HELLO_CAP] if isinstance(i, str) and _is_orphan(rec, i)}
-        await _cancel_pending(ws, orphans)
+        _spawn(_cancel_pending(ws, {i: None for i, deadline in replay.items() if deadline > time.monotonic()} | orphans))
         if _stat_watch.get(key) or key in _stat_off:
-            await _send_stats(key, True)  # a connector forgets its sampling when its session ends
+            _spawn(_send_stats(key, True))  # a connector forgets its sampling when its session ends
         while True:
             message = await ws.receive()
             if message.get("type") == "websocket.disconnect":
@@ -800,6 +808,10 @@ async def handle_socket(ws, *, hello_timeout: float = HELLO_TIMEOUT) -> None:
                         cb(str(data.get("stream") or "out"), str(data.get("data") or ""))
                     except Exception:
                         logger.debug("agent chunk callback failed", exc_info=True)
+                elif _is_orphan(rec, job_id):
+                    # Output for an exec no call owns (Fuse restarted under it):
+                    # stop it instead of letting it run to its deadline unseen.
+                    _cancel_orphan(rec, job_id)
                 continue
             if kind != "res":
                 continue

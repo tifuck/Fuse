@@ -1290,9 +1290,15 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
                 streamed["nl"] = data.endswith("\n")
                 sink(data)
 
-        data = await _agent_call(
-            user_id, host_id, "exec_stream", payload, kill_ms / 1000 + 10, on_chunk=on_chunk,
-        )
+        try:
+            data = await _agent_call(
+                user_id, host_id, "exec_stream", payload, kill_ms / 1000 + 10, on_chunk=on_chunk,
+            )
+        except asyncio.CancelledError:
+            # Stopped (kill, background limit): keep the stderr held back so far.
+            if err_parts:
+                sink(("" if streamed["nl"] or not streamed["out"] else "\n") + "[stderr]\n" + "".join(err_parts))
+            raise
         if not data.get("ok") and str(data.get("error") or "").strip() == "unknown op":
             # Pre-exec_stream connector: buffered result only, no live chunks.
             data = await _agent_call(user_id, host_id, "exec", payload, kill_ms / 1000 + 10)

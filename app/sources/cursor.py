@@ -1161,7 +1161,7 @@ class CursorSource:
             picked = self._pick(exclude=tried, prefer_id=prefer_id, owner_id=user_id, hint_id=hint_id, primary_id=primary_id, why=why)
             if not picked:
                 if not tried:
-                    last = explain_empty("cursor", why)
+                    last = explain_empty("cursor", why, user_id=user_id)
                 if attempts and last.credential_id == attempts[-1].get("credential_id"):
                     attempts.pop()
                 last.attempts = attempts
@@ -1260,7 +1260,7 @@ class CursorSource:
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
-        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid))
+        wrapped = UsageStream(_bind_on_finish(), collected, on_close=lambda: release(cid), cleanup=(rnd.close,))
         result = ChatResult(status=200, stream=wrapped, credential_id=cid, model=slug)
         result.attempts = attempts
         return result

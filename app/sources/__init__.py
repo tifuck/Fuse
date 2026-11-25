@@ -254,7 +254,9 @@ async def _refresh_source_models(s: Source, user_id: int | None) -> list[str]:
         _unavailable_types.discard(s.type_id)
     if _gen(s.source_id) != gen:
         return m
-    _store_models(key, m, sticky=s.type_id in POOL_TYPES)
+    # A source whose models() is already its whole lineup (it keeps its own
+    # merge and drops what the provider retired) is stored as listed.
+    _store_models(key, m, sticky=s.type_id in POOL_TYPES and not (m and getattr(s, "whole_catalog", False)))
     _live.add(key)
     _persist_success(s, _model_cache[key][1])
     return _model_cache[key][1]
@@ -859,6 +861,8 @@ def _can_fetch(s: Source, spec) -> bool:
         return False
     if spec.catalog_keyless:
         return True
+    if hasattr(s, "catalog_creds"):
+        return bool(s.catalog_creds())
     return bool(getattr(s, "all_creds", None) or getattr(s, "creds", None))
 
 

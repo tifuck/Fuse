@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import html as html_lib
 import logging
 import re
@@ -11,7 +12,7 @@ import httpx
 from .. import egress
 from ..client import TIMEOUT_DDG, PROVIDER_BODY_MAX
 from ..ssrf import decode_ddg_url, host_of, public_http_url
-from .base import ProviderResponse, SearchHit, empty_reason
+from .base import NextMatch, ProviderResponse, SearchHit, empty_reason, strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +26,19 @@ _SEARCH_HOSTS = {
     "duckduckgo.com",
     "www.duckduckgo.com",
 }
-_DDG_LINK = re.compile(
-    r'href="([^"]+)"[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>|'
-    r'class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-    re.I | re.S,
-)
-_DDG_SNIP = re.compile(r'class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</(?:a|span|td|div)', re.I | re.S)
-_LITE_LINK = re.compile(
-    r'<a[^>]*rel=["\']nofollow["\'][^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>|'
-    r'<a[^>]*href=["\']([^"\']+)["\'][^>]*rel=["\']nofollow["\'][^>]*>(.*?)</a>',
-    re.I | re.S,
-)
-_LITE_SNIP = re.compile(r"class=['\"]result-snippet['\"][^>]*>(.*?)</td>", re.I | re.S)
-_TAG = re.compile(r"(?is)<[^>]+>")
+# Linear on hostile pages (see base.strip_html): one <a ...> tag at a time,
+# attributes looked up inside it, closing tags found by NextMatch.
+_A_TAG = re.compile(r"<a\b[^<>]*>", re.I)
+_A_CLOSE = re.compile(r"</a>", re.I)
+_RESULT_A = re.compile(r'class="[^"]*result__a[^"]*"', re.I)
+_HREF = re.compile(r'href="([^"]+)"', re.I)
+_LITE_REL = re.compile(r"rel=[\"']nofollow[\"']", re.I)
+_LITE_HREF = re.compile(r"href=[\"']([^\"']+)[\"']", re.I)
+_DDG_SNIP = re.compile(r'class="[^"]*result__snippet[^"]*"', re.I)
+_DDG_SNIP_END = re.compile(r"</(?:a|span|td|div)", re.I)
+_LITE_SNIP = re.compile(r"class=['\"]result-snippet['\"]", re.I)
+_LITE_SNIP_END = re.compile(r"</td>", re.I)
+_GT = re.compile(">")
 
 # Keyed by egress.key(): DuckDuckGo judges the IP a request comes from, so
 # one user's flagged machine must not pause the provider for anyone else.
@@ -76,9 +77,7 @@ def _record_ok() -> None:
     _fail_streak.pop(egress.key(), None)
 
 
-def _strip(text: str) -> str:
-    text = html_lib.unescape(_TAG.sub(" ", text or ""))
-    return re.sub(r"\s+", " ", text).strip()
+_strip = strip_html
 
 
 def _search_host_ok(url: str) -> bool:
@@ -86,18 +85,65 @@ def _search_host_ok(url: str) -> bool:
     return host in _SEARCH_HOSTS or host.endswith(".duckduckgo.com")
 
 
-def _with_next_start(pattern, raw: str):
-    found = list(pattern.finditer(raw))
-    for n, match in enumerate(found):
-        yield match, found[n + 1].start() if n + 1 < len(found) else len(raw)
+def _snippets(raw: str, opener: re.Pattern, closer: re.Pattern) -> list[tuple[int, str]]:
+    """(start, text) per opener ... >text closer, in order and never nested."""
+    gt, close = NextMatch(raw, _GT), NextMatch(raw, closer)
+    found: list[tuple[int, str]] = []
+    end = 0
+    for match in opener.finditer(raw):
+        if match.start() < end:
+            continue
+        tag_end = gt(match.end())
+        stop = close(tag_end.end()) if tag_end else None
+        if not stop:
+            break
+        found.append((match.start(), _strip(raw[tag_end.end():stop.start()])))
+        end = stop.end()
+    return found
+
+
+def _links(raw: str, href_of) -> list[tuple[int, str, str]]:
+    """(start, href, title html) per <a> tag href_of accepts, never one
+    inside the previous link's text."""
+    close = NextMatch(raw, _A_CLOSE)
+    found: list[tuple[int, str, str]] = []
+    end = 0
+    for tag in _A_TAG.finditer(raw):
+        if tag.start() < end:
+            continue
+        href = href_of(tag.group(0))
+        if not href:
+            continue
+        stop = close(tag.end())
+        if not stop:
+            break
+        found.append((tag.start(), href, raw[tag.end():stop.start()]))
+        end = stop.end()
+    return found
+
+
+def _result_href(tag: str) -> str:
+    href = _HREF.search(tag) if _RESULT_A.search(tag) else None
+    return href.group(1) if href else ""
+
+
+def _lite_href(tag: str) -> str:
+    href = _LITE_HREF.search(tag) if _LITE_REL.search(tag) else None
+    return href.group(1) if href else ""
+
+
+def _with_next_start(found: list[tuple[int, str, str]], raw: str):
+    for n, link in enumerate(found):
+        yield link, found[n + 1][0] if n + 1 < len(found) else len(raw)
 
 
 def parse_ddg_html(raw: str) -> list[SearchHit]:
-    if "anomaly" in (raw or "").lower() and "unfortunate" in (raw or "").lower():
+    raw = raw or ""
+    if "anomaly" in raw.lower() and "unfortunate" in raw.lower():
         return []
-    snips = [(m.start(), _strip(m.group(1))) for m in _DDG_SNIP.finditer(raw)]
+    snips = _snippets(raw, _DDG_SNIP, _DDG_SNIP_END)
     if not snips:
-        snips = [(m.start(), _strip(m.group(1))) for m in _LITE_SNIP.finditer(raw)]
+        snips = _snippets(raw, _LITE_SNIP, _LITE_SNIP_END)
     results: list[SearchHit] = []
     seen: set[str] = set()
 
@@ -109,26 +155,24 @@ def parse_ddg_html(raw: str) -> list[SearchHit]:
                 return text
         return ""
 
-    for match, end in _with_next_start(_DDG_LINK, raw):
-        href = match.group(1) or match.group(3) or ""
-        title = _strip(match.group(2) or match.group(4) or "")
+    for (start, href, title), end in _with_next_start(_links(raw, _result_href), raw):
+        title = _strip(title)
         url = decode_ddg_url(href)
         if not url or url in seen or not title:
             continue
         seen.add(url)
-        snippet = _snippet_after(match.start(), end)
+        snippet = _snippet_after(start, end)
         results.append(SearchHit(title=title[:200], url=url, snippet=snippet[:280], provider="ddg", rank=len(results)))
         if len(results) >= 8:
             break
     if not results:
-        for match, end in _with_next_start(_LITE_LINK, raw):
-            href = match.group(1) or match.group(3) or ""
-            title = _strip(match.group(2) or match.group(4) or "")
+        for (start, href, title), end in _with_next_start(_links(raw, _lite_href), raw):
+            title = _strip(title)
             url = decode_ddg_url(href) or public_http_url(html_lib.unescape(href))
             if not url or url in seen or not title:
                 continue
             seen.add(url)
-            snippet = _snippet_after(match.start(), end)
+            snippet = _snippet_after(start, end)
             results.append(
                 SearchHit(title=title[:200], url=url, snippet=snippet[:280], provider="ddg", rank=len(results))
             )
@@ -240,7 +284,7 @@ class DdgProvider:
                 last_error = f"http_{resp.status_code}"
                 logger.error("fuse.search provider=ddg status=%s method=%s", resp.status_code, method)
                 continue
-            found = parse_ddg_html(resp.text)
+            found = await asyncio.to_thread(parse_ddg_html, resp.text)
             if found:
                 _record_ok()
                 return ProviderResponse(hits=found, status=200, error=None, last_timeout=last_timeout)

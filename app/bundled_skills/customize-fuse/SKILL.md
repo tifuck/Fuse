@@ -1,63 +1,97 @@
 ---
 name: customize-fuse
-description: Make custom backdrops for the Fuse chat. Use when the user wants to customize Fuse, change its look, or make or design a backdrop, background or wallpaper for the chat.
+description: Offer changes to how Fuse looks for the user, as one-click options in the chat. Use when the user asks for a backdrop, background or wallpaper; a project's logo or icon, folder color or name; or this chat's title.
 metadata:
   category: Design
 ---
 
-# Customize Fuse: custom backdrops
+# Customize Fuse
 
-A backdrop is the animated picture behind the chat transcript. Built-in ones are picked in Appearance > Backdrop. A custom backdrop is one HTML document you write; the user saves it from an artifact with a "Use this" button, and Fuse draws it full-screen behind the chat in a sandboxed iframe (opaque origin, no network). It is saved to the user's account (they keep up to 8; when full, Fuse asks which one the new one replaces), listed under "Your backdrops" in Appearance > Backdrop, and can be picked in every chat theme.
+The user can change five things from a set of options you offer:
 
-## Compatibility rules (a backdrop that breaks one fails or looks wrong)
+- `backdrop`: the animated picture behind the chat transcript.
+- `project_logo`: the image shown in place of a project's folder icon. A project "icon" or "logo" means this.
+- `folder_color`: the color of a project's folder icon (shown while it has no logo).
+- `project_name`: the project's name.
+- `chat_title`: this chat's title.
 
-- One self-contained HTML document: `<!doctype html>`, inline `<style>` and `<script>` only. Canvas 2D or WebGL is fine; workers and WebRTC are blocked.
-- No network at all: no external scripts, stylesheets, fonts, images or fetches. Only `data:` URIs for images or fonts. The sandbox blocks everything else, so it would just be missing.
-- Pure picture: no text, buttons, links, forms or anything interactive. It never receives clicks or keys.
-- Fills the viewport with no scrollbars: `html,body{margin:0;height:100%;overflow:hidden}` and a full-size canvas or element.
-- Set `background` on `html,body` to the scene's base colour so it never flashes white while loading.
-- Handles `resize` (the chat panel changes size).
-- Scales with the viewport: it runs full-window, anywhere from a 390x844 phone to a 2560x1440 monitor. Size art and glyph cells from `Math.min(innerWidth, innerHeight)` (e.g. `cell = Math.max(6, Math.round(Math.min(w, h) / 80))`) and place things at fractions of `w` and `h`, never at fixed pixel sizes or offsets, so it looks the same at every size and in portrait.
+You offer them with `create_artifact` and `choices`. Fuse draws the options inline in your reply. Each option gets its own "Use this" button, and Fuse asks the user to confirm before it changes anything. You never change these settings yourself, and nothing has changed until the user clicks.
+
+## When
+
+- Only when the user asks to change one of these, in this turn. Never on your own initiative and never alongside other work.
+- Only the fields they named or clearly meant:
+  - "Rename the project" means `project_name`.
+  - "Rename this chat" means `chat_title`.
+  - "A logo", "an icon" or "a new look for the project" means `project_logo`, and also `folder_color` for "a new look".
+  - "A wallpaper" or "a background" means `backdrop`.
+- Never anything else, such as the machine, folder, permissions or model. These choices cannot change those.
+- When the project is unclear, ask which one. The project fields default to this chat's project. To name another, pass `project` with its exact name.
+
+## The call
+
+```json
+{"title": "Logo ideas for api", "choices": {
+  "project_logo": [{"name": "Bracket", "svg": "<svg ...>...</svg>"}, {"name": "Node", "svg": "<svg ...>...</svg>"}],
+  "folder_color": [{"name": "Moss", "color": "#46A758"}, {"name": "Ocean", "color": "#0090FF"}]
+}}
+```
+
+- Every field is a list of 1-4 options. Offer 2-4 when the user wants to compare, and 1 when they asked for one specific value.
+- `project_name` and `chat_title` options are plain strings: `["Release checklist", "Ship 2.4"]`.
+- After the call, say in one short sentence what you offered and that they can pick one. Never say it was applied.
+- On feedback, change the same artifact with `edit_artifact` or `update_artifact`. Do not create a new one. Then ask them to look again.
+
+## Project logos
+
+Each option is `{name, svg}`, one SVG document of at most 16 KB. Fuse draws it into a 128x128 PNG and shows it at 16 px in lists, so:
+
+- Use a square `viewBox` (e.g. `0 0 64 64`) and fill most of it.
+- Use plain shapes only: paths, circles, rects, gradients. No text over two letters, no scripts, no `foreignObject` and no outside links or images. The check refuses them.
+- One bold idea per logo, with thick strokes. A detail under 4 units of a 64-unit box disappears at 16 px.
+- Leave the background transparent, or make it a full shape (a rounded square or circle). It must read on both light and dark lists, so avoid pure black or white on its own.
+- Make the options really different (shape, metaphor, color), not four tints of one.
+
+## Folder colors
+
+Each option is `{name, color}`, with a `#RRGGBB` color and a short name. Fuse makes the folder's back panel from it, lighter on light themes and darker on dark ones, so pick clear mid-tones. The house set is `#E5484D` red, `#F76B15` orange, `#FFC53D` amber, `#46A758` green, `#12A594` teal, `#0090FF` blue, `#3E63DD` indigo, `#8E4EC6` violet, `#D6409F` pink and `#A18072` brown. Use it unless the user wants something else.
+
+## Names and titles
+
+- A project name is 1-80 characters and a chat title is 1-80 characters. Keep both short and plain, like the user's own words.
+- No quotes around them and no emoji unless asked.
+
+## Backdrops
+
+Each option is `{name, scheme, html}`. `scheme` is `"dark"` for a dark backdrop or `"light"` for a light one, and Fuse switches its text palette to match. The name is 1-40 characters. Fuse previews the chosen option at the user's screen shape. When used, it saves the backdrop to the user's account (they keep up to 8, and Fuse asks which one to replace when full) and turns it on in the current layout on this device. Other backdrops are picked in Appearance > Backdrop.
+
+The HTML rules (a backdrop that breaks one fails or looks wrong):
+
+- One self-contained HTML document: `<!doctype html>`, inline `<style>` and `<script>` only. Canvas 2D or WebGL is fine. Workers and WebRTC are blocked.
+- No network at all: no external scripts, stylesheets, fonts, images or fetches. Only `data:` URIs for images or fonts. The preview blocks them just like the real backdrop does.
+- A pure picture: no text, buttons, links, forms or anything interactive. It never receives clicks or keys.
+- Fill the viewport with no scrollbars: `html,body{margin:0;height:100%;overflow:hidden}` and a full-size canvas or element.
+- Set `background` on `html,body` to the scene's base color, so it never flashes white while loading.
+- Handle `resize`, because the chat panel changes size.
+- Scale with the viewport. It runs full-window, anywhere from a 390x844 phone to a 2560x1440 monitor.
+  - Size art and glyph cells from `Math.min(innerWidth, innerHeight)`, e.g. `cell = Math.max(6, Math.round(Math.min(w, h) / 80))`.
+  - Place things at fractions of `w` and `h`, never at fixed pixel sizes or offsets.
 - Animate with `requestAnimationFrame`, capped near 30 fps (skip frames under ~33 ms).
 - Honour `prefers-reduced-motion: reduce`: draw one still frame and stop.
-- Light on CPU/GPU: it runs all day behind the chat. No per-pixel JS loops over a full-resolution canvas; cap `devicePixelRatio` at 1.5; keep particle counts modest; prefer gradients, a few shapes, glyphs, or a small canvas scaled up.
-- Keep the middle calm and low-contrast: chat text sits over it. Put detail and brightness toward edges, horizon or corners.
-- Pick `scheme`: `"dark"` for a dark backdrop, `"light"` for a light one. Fuse switches its text palette to match.
-- At most 128 KB (UTF-8). Name 1-40 characters.
-- Deterministic-ish: seed any randomness from a fixed number so it looks the same each load.
+- Keep CPU and GPU use light, because it runs all day behind the chat.
+  - No per-pixel JS loops over a full-resolution canvas.
+  - Cap `devicePixelRatio` at 1.5 and keep particle counts modest.
+  - Prefer gradients, a few shapes, glyphs, or a small canvas scaled up.
+- Keep the middle calm and low-contrast, because chat text sits over it. Put detail and brightness toward the edges, horizon or corners.
+- At most 128 KB (UTF-8).
+- Seed any randomness from a fixed number, so it looks the same on each load.
 
-## House style
+House style: Fuse's built-in scenes are quiet and low-contrast, one hue family each. They use four art styles: soft (painted gradients, haze and glows), layered (flat paper-cut silhouettes with atmospheric depth), line (fine strokes on a flat ground) and dots (points, glows or small glyphs in one hue). Most are dark (night blues, violets, ink greens) and a few are pale and light. Pick one style per backdrop. Stay tasteful and low-contrast unless the user asks for something loud.
 
-Fuse's built-in scenes are quiet and low-contrast, one hue family each, in four art styles: soft (painted gradients, haze and glows), layered (flat paper-cut silhouettes with atmospheric depth), line (fine strokes on a flat ground) and dots (points, glows or small glyphs in one hue). Most are dark (night blues, violets, ink greens); a few are pale and light. Pick one style and keep to it. Stay tasteful and low-contrast unless the user asks for something loud.
-
-## Workflow
-
-1. Ask nothing unless the request is truly vague; pick a direction from the user's words.
-2. Call `create_artifact` with 2-4 options side by side. Preview each live in `<iframe sandbox="allow-scripts">` whose `srcdoc` is the very same HTML string its "Use this" button passes to `window.fuse.setBackdrop({name, scheme, html})`. Keep each option's HTML in one JS array so preview and apply cannot drift apart. Keep the template's preview sizing: the iframe renders at the user's screen size and is scaled down to the card, so the preview matches what they get. A card-sized iframe would show the art several times bigger than it is applied.
-3. Tell the user to click "Use this" under the one they like (Fuse asks to confirm, then applies it at once). It only works when the artifact is open inside the Fuse chat.
-4. On feedback, change the artifact with `edit_artifact` (do not create a new one), then ask them to try again.
-
-Reverting: choose another backdrop or None in Appearance > Backdrop. Custom backdrops are deleted from the "Yours" group there. If a backdrop hangs the page, open `/chat?nobackdrop`: it loads no custom backdrop, so Appearance still works.
-
-## Template artifact
-
-Inside the JS template literal write `<\/script>` for closing script tags, and do not use backticks or `${` in backdrop code (use `+` to join strings). The preview iframe allows more than the real backdrop does (it inherits the artifact page's rules), so never rely on a CDN even if the preview seems to work.
+A minimal backdrop:
 
 ```html
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-body{margin:0;padding:16px;background:var(--fuse-bg);color:var(--fuse-text);font:16px/1.5 system-ui,sans-serif}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-figure{margin:0}
-.view{position:relative;overflow:hidden;border:1px solid var(--fuse-line);border-radius:8px}
-.view iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0}
-figcaption{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0}
-button{min-height:44px;padding:0 16px;border:0;border-radius:8px;background:var(--fuse-accent);color:var(--fuse-on-accent);font:inherit;cursor:pointer}
-</style></head><body>
-<div class="grid" id="grid"></div>
-<script>
-var OPTIONS = [
-  {name: "Night glyphs", scheme: "dark", html: `<!doctype html><html><head><meta charset="utf-8">
+<!doctype html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#0b0f17}canvas{display:block;width:100%;height:100%}</style>
 </head><body><canvas id="c"></canvas><script>
 (function(){
@@ -76,33 +110,7 @@ function size(){w=innerWidth;h=innerHeight;u=Math.max(6,Math.min(w,h)/80);c.widt
 function loop(t){requestAnimationFrame(loop);if(t-last<33)return;last=t;draw(t);}
 addEventListener("resize",size);size();if(!still)requestAnimationFrame(loop);
 })();
-<\/script></body></html>`}
-  // , {name: "...", scheme: "dark", html: `...`}
-];
-// Previews render at the user's screen size, scaled down to the card.
-var W = Math.max(screen.availWidth || 1440, 320), H = Math.max(screen.availHeight || 900, 320);
-var grid = document.getElementById("grid"), views = [];
-function fit() { views.forEach(function (v) { v.frame.style.transform = "scale(" + v.box.clientWidth / W + ")"; }); }
-addEventListener("resize", fit);
-OPTIONS.forEach(function (o) {
-  var fig = document.createElement("figure"), box = document.createElement("div"), frame = document.createElement("iframe");
-  box.className = "view";
-  box.style.aspectRatio = W + "/" + H;
-  frame.style.width = W + "px";
-  frame.style.height = H + "px";
-  frame.setAttribute("sandbox", "allow-scripts");
-  frame.title = o.name;
-  frame.srcdoc = o.html;
-  var cap = document.createElement("figcaption"), label = document.createElement("span"), use = document.createElement("button");
-  label.textContent = o.name;
-  use.textContent = "Use this";
-  use.onclick = function () { window.fuse.setBackdrop({name: o.name, scheme: o.scheme, html: o.html}); };
-  cap.append(label, use);
-  box.append(frame);
-  fig.append(box, cap);
-  grid.append(fig);
-  views.push({box: box, frame: frame});
-});
-fit();
 </script></body></html>
 ```
+
+Reverting a backdrop: choose another one, or None, in Appearance > Backdrop. Custom backdrops are deleted from the "Yours" group there. If a backdrop hangs the page, open `/chat?nobackdrop`: it loads no custom backdrop, so Appearance still works.

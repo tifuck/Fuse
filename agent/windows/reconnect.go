@@ -5,7 +5,7 @@ const (
 	pongTimeoutMS  = 15000
 	pingMissLimit  = 1
 	suspendGapMS   = 2000
-	backoffCapMS   = 30000
+	backoffCapMS   = 15000
 	// hello_ok alone is not a healthy session: a server that closes right
 	// after it would otherwise get a zero-delay reconnect loop.
 	healthySessionMS = 30000
@@ -112,7 +112,9 @@ func connWatchWaitMS(w *connWatch, monoMS int64) int {
 	return int(left)
 }
 
-var backoffMS = []int{0, 1000, 2000, 5000, 10000, 15000, backoffCapMS}
+var backoffMS = []int{0, 500, 1000, 2000, 3000, 5000, 10000, backoffCapMS}
+
+var backoffMaxIndex = len(backoffMS) - 1
 
 func reconnectBackoffMS(failIndex int, jitterRand uint32) int {
 	if failIndex < 0 {
@@ -135,10 +137,10 @@ func failIndexAfterSession(failIndex int, lastedMS int64, gotFrame bool) int {
 	if gotFrame || lastedMS >= healthySessionMS {
 		return 0
 	}
-	if failIndex < 6 {
+	if failIndex < backoffMaxIndex {
 		return failIndex + 1
 	}
-	return 6
+	return backoffMaxIndex
 }
 
 func wakeReasonStr(wake int) string {

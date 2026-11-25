@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 TERMINAL = ("completed", "timed_out", "cancelled", "interrupted", "lost")
 JOB_CAP = 64
 WS_MONITOR_CAP = 8
+# Per-user shares of the server-wide caps: one account cannot starve the rest.
+JOB_USER_CAP = 16
+WS_MONITOR_USER_CAP = 2
 WAKE_COMMAND_LIMIT = 4
 WAKE_MONITOR_LIMIT = 4
 OUT_TAIL_CHARS = 16_000
@@ -210,21 +213,26 @@ def row_elapsed_ms(row) -> int | None:
 _reserved: dict[str, dict] = {}
 
 
-def _admit(kind: str, host_id: int, source: str) -> None:
+def _admit(kind: str, host_id: int, source: str, user_id: int) -> None:
     """In-memory admission caps. Raises ValueError when a cap is hit."""
     _prune()
-    live = [*_live.values(), *_reserved.values()]
-    running = sum(1 for v in live if v.get("status") not in TERMINAL)
-    if running >= JOB_CAP:
+    running = [v for v in (*_live.values(), *_reserved.values()) if v.get("status") not in TERMINAL]
+    mine = [v for v in running if v.get("user_id") == int(user_id)]
+    if len(running) >= JOB_CAP:
         raise ValueError("too many running commands")
-    if source == "ws":
-        ws_running = sum(
-            1
-            for v in live
-            if v.get("status") not in TERMINAL and v.get("source") == "ws"
+    if len(mine) >= JOB_USER_CAP:
+        raise ValueError(
+            f"too many running commands for this user (limit {JOB_USER_CAP}); "
+            "kill_command one or wait for one to finish"
         )
-        if ws_running >= WS_MONITOR_CAP:
+    if source == "ws":
+        if sum(1 for v in running if v.get("source") == "ws") >= WS_MONITOR_CAP:
             raise ValueError("too many running websocket monitors")
+        if sum(1 for v in mine if v.get("source") == "ws") >= WS_MONITOR_USER_CAP:
+            raise ValueError(
+                f"too many running websocket monitors for this user (limit {WS_MONITOR_USER_CAP}); "
+                "kill_command one or wait for one to finish"
+            )
 
 
 def clean_description(value) -> str:
@@ -335,6 +343,9 @@ def _start_rec(
         rec["notify"] = True
     loop = asyncio.get_running_loop()
     rec["future"] = loop.create_future()
+    # Set once the terminal state is in memory, before it is saved: a
+    # foreground join need not wait on the writes to answer the model.
+    rec["settled"] = loop.create_future()
     rec["task"] = asyncio.create_task(_supervise(rec, runner))
     rec["task"].add_done_callback(lambda task: _cancelled_before_start(rec, task))
     _live[job_id] = rec
@@ -381,7 +392,7 @@ def launch(
     kind, source, background, max_events = _normalize_launch(
         kind=kind, url=url, command=command, background=background, max_events=max_events
     )
-    _admit(kind, host_id, source)
+    _admit(kind, host_id, source, user_id)
     job_id = uuid4().hex[:12]
     now = db.now()
     _insert_job_row(
@@ -414,10 +425,11 @@ async def launch_async(**kwargs) -> dict:
     )
     kwargs["background"] = background
     host_id = kwargs.get("host_id") or 0
-    _admit(kind, host_id, source)
+    _admit(kind, host_id, source, kwargs["user_id"])
     job_id = uuid4().hex[:12]
     now = db.now()
-    _reserved[job_id] = {"status": "starting", "host_id": int(host_id), "source": source}
+    _reserved[job_id] = {"status": "starting", "host_id": int(host_id), "source": source,
+                         "user_id": int(kwargs["user_id"])}
     inserted = False
 
     def insert(**row):
@@ -752,6 +764,9 @@ def _apply_finish(rec: dict, *, status: str, exit_code: int | None, error: str) 
             "out": (rec.get("out") or "")[-OUT_TAIL_CHARS:],
         }
     )
+    settled = rec.get("settled")
+    if settled is not None and not settled.done():
+        settled.set_result(status)
 
 
 def _persist_finish(rec: dict, *, status: str, exit_code: int | None, error: str, duration: int) -> bool:
@@ -763,7 +778,7 @@ def _persist_finish(rec: dict, *, status: str, exit_code: int | None, error: str
             conn.execute(
                 "UPDATE command_jobs SET status=?, exit_code=?, error=?, `out`=?, out_bytes=?,"
                 " duration_ms=?, finished_at=?, out_chars=?, output_incomplete=?, termination_confirmed=?,"
-                " event_count=?, max_events=?"
+                " event_count=?, max_events=?, background=?"
                 " WHERE id=? AND status IN ('running','cancelling','cancelled')",
                 (
                     status,
@@ -778,6 +793,7 @@ def _persist_finish(rec: dict, *, status: str, exit_code: int | None, error: str
                     rec.get("termination_confirmed"),
                     int(rec.get("event_count") or 0),
                     int(rec.get("max_events") or 1),
+                    int(bool(rec.get("background"))),
                     rec["id"],
                 ),
             )
@@ -806,6 +822,9 @@ PERSIST_RETRY_DELAYS = (1.0, 3.0, 10.0, 30.0)
 
 
 async def _persist_terminal(rec: dict, *, status: str, exit_code: int | None, error: str) -> None:
+    # A foreground join may already have answered from memory (settled):
+    # until this saves, the record is the only terminal copy, so never prune it.
+    rec["unpersisted"] = True
     # Through a worker thread so the loop never blocks on the pool.
     for delay in (*PERSIST_RETRY_DELAYS, None):
         if await asyncio.to_thread(
@@ -972,10 +991,12 @@ async def _deliver_monitor_event(rec: dict, envelope: str, seq: int) -> None:
             logger.exception("Schedule monitor wake failed for job %s", rec["id"])
 
 
-def _apply_delivery(conn, ids: list[str]):
+def _apply_delivery(conn, ids: list[str], scope: tuple[int, int] | None = None):
     """Mark ids delivered in conn's transaction. Returns the matching prune of
     live jobs' pending monitor events, to run only once that commits: pruned
-    early, a rolled-back receipt would drop events no wake ever delivers."""
+    early, a rolled-back receipt would drop events no wake ever delivers.
+    scope (user_id, thread_id) limits it to that thread's jobs: receipt ids
+    from a transcript must never acknowledge another user's job."""
     from . import monitor as monitor_mod
 
     jobs: list[str] = []
@@ -988,20 +1009,23 @@ def _apply_delivery(conn, ids: list[str]):
             events[job_id] = max(events.get(job_id, 0), seq)
         elif ident:
             jobs.append(ident)
+    where, args = ("", ()) if scope is None else (" AND user_id=? AND thread_id=?", tuple(scope))
     if jobs:
         conn.executemany(
-            "UPDATE command_jobs SET delivered=1 WHERE id=?", [(i,) for i in jobs]
+            "UPDATE command_jobs SET delivered=1 WHERE id=?" + where, [(i, *args) for i in jobs]
         )
     for job_id, seq in events.items():
         conn.execute(
-            "UPDATE command_jobs SET delivered_event_seq=? WHERE id=? AND delivered_event_seq<?",
-            (int(seq), job_id, int(seq)),
+            "UPDATE command_jobs SET delivered_event_seq=? WHERE id=? AND delivered_event_seq<?" + where,
+            (int(seq), job_id, int(seq), *args),
         )
 
     def settle():
         for job_id, seq in events.items():
             rec = _live.get(job_id)
             if rec is None:
+                continue
+            if scope is not None and (rec.get("user_id"), rec.get("thread_id")) != scope:
                 continue
             rec["delivered_event_seq"] = max(int(rec.get("delivered_event_seq") or 0), int(seq))
             rec["pending_events"] = [
@@ -1012,25 +1036,27 @@ def _apply_delivery(conn, ids: list[str]):
     return settle
 
 
-def _mark_delivered(ids: list[str]) -> None:
+def _mark_delivered(ids: list[str], scope: tuple[int, int] | None = None) -> None:
     if not ids:
         return
     ensure_schema()
     with db.tx() as conn:
-        settle = _apply_delivery(conn, ids)
+        settle = _apply_delivery(conn, ids, scope)
     settle()
 
 
-def mark_delivered(ids: list[str], conn=None) -> None:
-    """Public delivery receipt for wake turns that embed envelopes in their prompt.
-    With conn (an open chat_tx.transaction) the receipt joins that transaction."""
+def mark_delivered(ids: list[str], conn=None, *, user_id: int, thread_id: int) -> None:
+    """Public delivery receipt for wake turns that embed envelopes in their prompt,
+    limited to that user's thread. With conn (an open chat_tx.transaction) the
+    receipt joins that transaction."""
+    scope = (int(user_id), int(thread_id))
     if conn is not None:
         if ids:
             from . import chat_tx
 
-            chat_tx.after_commit(_apply_delivery(conn, ids))
+            chat_tx.after_commit(_apply_delivery(conn, ids, scope))
         return
-    _mark_delivered(ids)
+    _mark_delivered(ids, scope)
 
 
 def notification(rec: dict) -> str:
@@ -1184,15 +1210,9 @@ def mark_notified(rec: dict) -> None:
     rec["notify"] = True
     ensure_schema()
     with db.tx() as conn:
-        conn.execute("UPDATE command_jobs SET notify=1 WHERE id=?", (str(rec["id"]),))
-
-
-def mark_background(rec: dict) -> None:
-    """A foreground command handed off past the wait window runs as background."""
-    rec["background"] = True
-    ensure_schema()
-    with db.tx() as conn:
-        conn.execute("UPDATE command_jobs SET background=1 WHERE id=?", (str(rec["id"]),))
+        # Also saves a move to the background (arm_background, on the loop).
+        conn.execute("UPDATE command_jobs SET notify=1, background=? WHERE id=?",
+                     (int(bool(rec.get("background"))), str(rec["id"])))
 
 
 def arm_background(rec: dict, limit_ms: int = BACKGROUND_DEFAULT_MS) -> None:
@@ -1210,7 +1230,6 @@ def arm_background(rec: dict, limit_ms: int = BACKGROUND_DEFAULT_MS) -> None:
             when = None
         if when is not None and (deadline.when() is None or when < deadline.when()):
             deadline.reschedule(when)
-    mark_background(rec)
 
 
 _NOT_FOUND = "job not found (command jobs only; if this is a subagent id, use get_subagent_output)"
@@ -1218,6 +1237,8 @@ _NOT_FOUND = "job not found (command jobs only; if this is a subagent id, use ge
 
 def _acknowledge(rec: dict) -> None:
     """An inline terminal receipt supersedes automatic delivery."""
+    if not rec.get("notify"):
+        return  # never queued nor woken for: nothing to supersede
     run_id = rec.get("run_id")
     if run_id:
         try:
@@ -1249,7 +1270,9 @@ async def join(job_id: str, user_id: int, wait_s: float, *, thread_id=None, run_
     wait_for = 0.0 if inspect_only else wait_s
     arrival = ""
     if rec.get("status") not in TERMINAL and wait_for > 0:
-        fut = rec.get("future")
+        # A job nothing will deliver is answered from memory; one that may
+        # be delivered waits for that, so the join can supersede it.
+        fut = rec.get("future") if rec.get("notify") else rec.get("settled") or rec.get("future")
         if fut is not None and not fut.done():
             from . import run_inbox
 
@@ -1260,7 +1283,8 @@ async def join(job_id: str, user_id: int, wait_s: float, *, thread_id=None, run_
             )
     if rec.get("status") in TERMINAL:
         # An explicit join is a delivery; suppress the automatic notification.
-        _acknowledge(rec)
+        if rec.get("notify"):
+            await asyncio.to_thread(_acknowledge, rec)
         return render(rec, tool="get_command_output")
     text, trace = render(rec, tool="get_command_output")
     if inspect_only and wait_s > 0:

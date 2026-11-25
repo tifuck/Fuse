@@ -7,6 +7,7 @@ No I/O, no state, no provider calls."""
 
 from __future__ import annotations
 
+import bisect
 import json
 import math
 import re
@@ -22,6 +23,7 @@ _SPECIAL_TOKENS = re.compile(
     r"|</s>",
     re.I,
 )
+_SPECIAL_TOKEN_MAX = len("<|end_of_text|>")  # the longest text it matches
 # A parameter value may quote a closing tag (an edit to this file, echo
 # '</function>'), so each element ends at the first closing tag that sits on a
 # structural boundary, without crossing the next opener of its kind. Only when
@@ -33,6 +35,10 @@ _TOOL_XML_BLOCK = re.compile(
     re.I | re.S,
 )
 _TOOL_XML_OPEN = re.compile(r"<tool_calls?\b", re.I)
+_TOOL_XML_CLOSE = re.compile(r"</tool_calls?>", re.I)
+_TOOL_XML_CALL_END = re.compile(r"(?:</function>|</invoke>)\s*</tool_calls?>", re.I)
+_TOOL_XML_FN = re.compile(r"<function\s*=|<invoke\b", re.I)
+_GT = re.compile(">")
 _FUNCTION_XML = re.compile(
     r"<function\s*=\s*([A-Za-z][\w.-]*)>((?:(?!<function\s*=).)*?</parameter>\s*(?=</function>)|.*?)</function>",
     re.I | re.S,
@@ -41,6 +47,9 @@ _INVOKE_XML = re.compile(
     r"<invoke\s+name\s*=\s*[\"']([^\"']+)[\"']>((?:(?!<invoke\b).)*?</parameter>\s*(?=</invoke>)|.*?)</invoke>",
     re.I | re.S,
 )
+_FUNCTION_CLOSE = re.compile(r"</function>", re.I)
+_INVOKE_CLOSE = re.compile(r"</invoke>", re.I)
+_PARAM_CLOSE = re.compile(r"</parameter>", re.I)
 _PARAM_END = r"(?=</parameter>\s*(?:<parameter\b|</function>|</invoke>|\Z))"
 _PARAM_EQ_XML = re.compile(
     r"<parameter\s*=\s*([A-Za-z][\w.-]*)>((?:(?!<parameter\b).)*?" + _PARAM_END + r"|.*?)</parameter>",
@@ -52,36 +61,186 @@ _PARAM_NAME_XML = re.compile(
 )
 
 
-def strip_special_tokens(text: str) -> str:
-    """Remove leaked EOS / chat-template tokens from visible model text."""
+class _Next:
+    """Where `pattern` next matches in `text` at or after a position. Lookups
+    at growing positions reuse the last answer, so asking once per candidate
+    scans the text once instead of once per candidate."""
+
+    def __init__(self, text: str, pattern: re.Pattern):
+        self.text, self.pattern = text, pattern
+        self.since: int | None = None
+        self.found: re.Match | None = None
+
+    def __call__(self, pos: int) -> re.Match | None:
+        if self.since is not None and self.since <= pos and (self.found is None or self.found.start() >= pos):
+            return self.found
+        self.found = self.pattern.search(self.text, pos)
+        self.since = pos
+        return self.found
+
+
+def _tool_xml_blocks(text: str, start: int = 0):
+    """(start, end) of each match of _TOOL_XML_BLOCK.finditer(text, start),
+    in linear time. The regex retries from every opener and, for a call that
+    never closes, rescans to the end each time: quadratic in the openers."""
+    gt, inner, call_end, close, fn = (
+        _Next(text, pattern) for pattern in (_GT, _TOOL_XML_OPEN, _TOOL_XML_CALL_END, _TOOL_XML_CLOSE, _TOOL_XML_FN)
+    )
+    pos = start
+    while opener := _TOOL_XML_OPEN.search(text, pos):
+        head = gt(opener.end())
+        if not head:
+            return
+        body = head.end()
+        # A body that ends in </function> or </invoke> must not cross another
+        # opener; one that does not must hold no <function=/<invoke at all.
+        end = call_end(body)
+        nested = inner(body)
+        if not end or (nested and nested.start() < end.start()):
+            end = close(body)
+            named = fn(body)
+            if end and named and named.start() < end.start():
+                end = None
+        if end:
+            yield opener.start(), end.end()
+            pos = end.end()
+        else:
+            pos = opener.start() + 1
+
+
+_HELD_TOKEN = re.compile(r"(</tool_calls?>)|(<tool_calls?\b)|(<function\s*=|<invoke\b)|>", re.I)
+
+
+class HeldToolXml:
+    """Whether text appended to a held tool call (drop_tool_xml's tail) may
+    have completed a _TOOL_XML_BLOCK in it, in time linear in what was
+    appended.
+
+    A closing tag completes a block when no <function= or <invoke lies in the
+    body of the last opener whose body started before it, or when it follows
+    </function> or </invoke> after the last opener's body. An answer of False
+    is exact. A token split across calls is found on the next one (a short
+    overlap is rescanned), except a <function= with more whitespace before its
+    "=" than the overlap holds; missing that only answers True too often."""
+
+    _OVERLAP = 16
+
+    def __init__(self):
+        self.scanned = 0
+        self.opener = -1  # start of the last opener
+        self.body = -1  # body start of the last opener whose ">" has arrived
+        self.opener_body = False  # whether that is the last opener
+        self.named = -1  # start of the last <function= / <invoke
+
+    def closes(self, held: str) -> bool:
+        closed = False
+        for token in _HELD_TOKEN.finditer(held, self.scanned):
+            at = token.start()
+            self.scanned = token.end()
+            if token.group(2):
+                self.opener, self.opener_body = at, False
+                continue
+            if token.group(3):
+                self.named = at
+                continue
+            if token.group(1) and self.body >= 0:
+                end = at
+                while end > self.body and held[end - 1].isspace():
+                    end -= 1
+                call_end = next((end - len(tag) for tag in ("</function>", "</invoke>")
+                                 if held[end - len(tag):end].lower() == tag), -1)
+                if self.named < self.body or (self.opener_body and call_end >= self.body):
+                    closed = True
+            if self.opener >= 0 and not self.opener_body:
+                self.body, self.opener_body = token.end(), True
+        self.scanned = max(self.scanned, len(held) - self._OVERLAP)
+        return closed
+
+
+def _quoted_in(spans: list[tuple[int, int]]):
+    """index -> whether it falls in one of spans (sorted, disjoint)."""
+    starts = [lo for lo, _ in spans]
+
+    def quoted(index: int) -> bool:
+        at = bisect.bisect_right(starts, index) - 1
+        return at >= 0 and index < spans[at][1]
+
+    return quoted
+
+
+_WS = re.compile(r"\s*")
+
+
+def _bounded_finditer(pattern: re.Pattern, closer: re.Pattern, text: str, *, lookahead: int = 0):
+    """pattern.finditer(text) for a pattern whose every match ends with
+    closer, stopped after the last closer (plus whitespace and `lookahead`
+    characters a lookahead there reads): an opener past it cannot match, and
+    each such opener would otherwise rescan to the end of the text."""
+    last = None
+    for last in closer.finditer(text):
+        pass
+    if last is None:
+        return iter(())
+    endpos = last.end()
+    if lookahead:
+        endpos = min(len(text), _WS.match(text, endpos).end() + lookahead)
+    return pattern.finditer(text, 0, endpos)
+
+
+def _sub_spans(text: str, spans, repl) -> str:
+    parts, pos = [], 0
+    for lo, hi in spans:
+        parts.append(text[pos:lo])
+        parts.append(repl(lo, hi))
+        pos = hi
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
+def strip_special_tokens(text: str, clean: int = 0) -> str:
+    """Remove leaked EOS / chat-template tokens from visible model text.
+    text[:clean] is known to hold no whole token (special_token_free) and is
+    not scanned again: a held tail restripped on every chunk was quadratic."""
     if not text:
         return text
-    return _SPECIAL_TOKENS.sub("", text)
+    cut = max(0, clean - _SPECIAL_TOKEN_MAX)
+    if not cut:
+        return _SPECIAL_TOKENS.sub("", text)
+    return text[:cut] + _SPECIAL_TOKENS.sub("", text[cut:])
 
 
-def drop_tool_xml(text: str, start: int = 0) -> tuple[str, str]:
+def special_token_free(stripped: str, clean: int = 0) -> int:
+    """How much of strip_special_tokens(text, clean) holds no whole token
+    (removing one can join the text around it into another)."""
+    match = _SPECIAL_TOKENS.search(stripped, max(0, clean - 2 * _SPECIAL_TOKEN_MAX))
+    return match.start() if match else len(stripped)
+
+
+def drop_tool_xml(text: str, start: int = 0, code: MdCode | None = None) -> tuple[str, str]:
     """Split assistant text into (visible, incomplete <tool_call> tail).
 
     Complete XML tool dumps are dropped so they are not shown as the answer.
     An unclosed opener is held back until the next chunk or round end.
     Markdown code is quoted text that extract_text_tool_calls never runs, so a
     call shown there stays visible. Only text[start:] is rewritten; the settled
-    prefix is read to tell whether a later opener sits inside code.
+    prefix is read to tell whether a later opener sits inside code (through
+    `code` when given, so a streamed reply is not rescanned on every chunk).
     """
     if not text:
         return "", ""
     if not _TOOL_XML_OPEN.search(text, start):
         return text, ""
-    code = [match.span() for match in _MD_CODE.finditer(text)]
-
-    def quoted(index: int) -> bool:
-        return any(lo <= index < hi for lo, hi in code)
+    if code is None:
+        quoted = _quoted_in([match.span() for match in _MD_CODE.finditer(text)])
+    else:
+        def quoted(at: int) -> bool:
+            return code.quoted(text, at) is True
 
     parts, pos = [text[:start]], start
-    for block in _TOOL_XML_BLOCK.finditer(text, start):
-        if not quoted(block.start()):
-            parts.append(text[pos:block.start()])
-            pos = block.end()
+    for lo, hi in _tool_xml_blocks(text, start):
+        if not quoted(lo):
+            parts.append(text[pos:lo])
+            pos = hi
     # Held from the first unclosed opener: extract_text_tool_calls parses from
     # there, so text after it is part of that call.
     first = next((match for match in _TOOL_XML_OPEN.finditer(text, pos) if not quoted(match.start())), None)
@@ -142,9 +301,10 @@ def _xml_text(raw: str) -> str:
 def _xml_params(body: str) -> dict:
     """Raw parameter text; _xml_call types it against the tool's schema."""
     args = {}
-    for match in _PARAM_EQ_XML.finditer(body or ""):
+    # _PARAM_END reads past a closing tag: \s* then up to 11 characters.
+    for match in _bounded_finditer(_PARAM_EQ_XML, _PARAM_CLOSE, body or "", lookahead=12):
         args[match.group(1)] = match.group(2)
-    for match in _PARAM_NAME_XML.finditer(body or ""):
+    for match in _bounded_finditer(_PARAM_NAME_XML, _PARAM_CLOSE, body or "", lookahead=12):
         args[match.group(1)] = match.group(2)
     return args
 
@@ -180,13 +340,13 @@ def _xml_call(name: str, args: dict, index: int, *, coding: bool, raw: bool = Fa
 
 def _calls_from_xml_body(body: str, *, coding: bool, start: int = 0) -> list[dict]:
     calls = []
-    for match in _FUNCTION_XML.finditer(body or ""):
+    for match in _bounded_finditer(_FUNCTION_XML, _FUNCTION_CLOSE, body or ""):
         rec = _xml_call(match.group(1), _xml_params(match.group(2)), start + len(calls), coding=coding, raw=True)
         if rec:
             calls.append(rec)
     if calls:
         return calls
-    for match in _INVOKE_XML.finditer(body or ""):
+    for match in _bounded_finditer(_INVOKE_XML, _INVOKE_CLOSE, body or ""):
         rec = _xml_call(match.group(1), _xml_params(match.group(2)), start + len(calls), coding=coding, raw=True)
         if rec:
             calls.append(rec)
@@ -249,6 +409,195 @@ def in_md_code(text: str, at: int) -> bool | None:
     return None if "`" in text[line:at] else False
 
 
+_TICK_RUN = re.compile(r"`+")
+_FENCE_OPEN = re.compile(r"[ \t]{0,3}(`{3,}(?!`)|~{3,}(?!~))")
+_FENCE_UNSURE = re.compile(r"[ \t]{0,3}(?:`{0,2}|~{0,2})")
+_FENCE_PROBE = re.compile(r"[ \t]{0,3}(?:`+|~+)?")
+_FENCE_CLOSE = re.compile(r"[ \t]{0,3}(`+|~+)[ \t]*")
+
+
+class MdCode:
+    """in_md_code and drop_tool_xml's code lookups for a streamed reply, in
+    linear time. Asking after every chunk with _MD_CODE.finditer over the
+    whole text was quadratic in its length (thousands of </think> tags).
+
+    Each line is scanned once, as _MD_CODE reads it: a fence runs from its
+    opener line to a closing line; on other lines a backtick run opens a span
+    that the first later run of the same length on that line closes. Runs
+    still unclosed (`opens`) are what text arriving later can change. Text
+    changed before what was read (a dropped tag or tool call) is rescanned
+    from the last mark before the change."""
+
+    def __init__(self):
+        self.text = ""
+        self.spans: list[tuple[int, int]] = []
+        # (pos, line start, spans kept, fence, line classified) where no
+        # backtick run is open: rescans restart from one of these.
+        self._marks = [(0, 0, 0, None, False)]
+        self._look = None
+        self._restore(0)
+
+    def _restore(self, index: int) -> None:
+        del self._marks[index + 1:]
+        self.cur, self.ls, kept, self.fence, self.known = self._marks[index]
+        del self.spans[kept:]
+        self.opener = False  # on the fence's opener line, which never closes it
+        self.probe = self.cur  # the line's fence check read text before this
+        self.opens: list[tuple[int, int]] = []
+        self.open_len: dict[int, int] = {}
+
+    def _mark(self) -> None:
+        if self._marks[-1][0] < self.cur:
+            self._marks.append((self.cur, self.ls, len(self.spans), self.fence, self.known))
+
+    def _read(self) -> int:
+        """How much of the text what is settled depends on."""
+        return max(self.cur, self.probe) if self.known else self.cur
+
+    def forget(self, at: int) -> None:
+        """Text from at on may change: rescan it on the next lookup."""
+        if at < self._read():
+            self._restore(bisect.bisect_right(self._marks, at, key=lambda mark: mark[0]) - 1)
+
+    def _sync(self, text: str) -> None:
+        if text is not self.text:
+            read = self._read()
+            if len(text) < read or text[:read] != self.text[:read]:
+                self._restore(0)
+            self.text = text
+
+    def _scan(self, bound: int) -> None:
+        text = self.text
+        while self.cur < bound:
+            if self.fence is not None:
+                nl = text.find("\n", self.cur, bound)
+                if nl < 0:
+                    self.cur = bound
+                    return
+                start, char, size = self.fence
+                close = None if self.opener else _FENCE_CLOSE.fullmatch(text, self.ls, nl)
+                if close and close[1][0] == char and len(close[1]) >= size:
+                    self.spans.append((start, nl))
+                    self.fence = None
+                self.opener = self.known = False
+                self.ls = self.cur = nl + 1
+                self._mark()
+                continue
+            nl = text.find("\n", self.cur, bound)
+            end = nl if nl >= 0 else bound
+            if not self.known:
+                fence = _FENCE_OPEN.match(text, self.ls, end)
+                if fence and (nl >= 0 or fence.end() < end):
+                    self.fence = (self.ls, fence[1][0], len(fence[1]))
+                    self.opener = True
+                    self.cur = fence.end()
+                    continue
+                if nl < 0 and (fence or _FENCE_UNSURE.fullmatch(text, self.ls, end)):
+                    return  # the line may still open a fence
+                self.known = True
+                self.probe = _FENCE_PROBE.match(text, self.ls, end).end() + 1
+            for run in _TICK_RUN.finditer(text, self.cur, end):
+                lo, hi = run.span()
+                if hi == end and nl < 0:
+                    self.cur = lo  # the run may still grow
+                    return
+                if not self.opens and lo >= self.probe:
+                    self.cur = lo
+                    self._mark()
+                start = self.open_len.get(hi - lo)
+                if start is None:
+                    self.opens.append((lo, hi - lo))
+                    self.open_len[hi - lo] = lo
+                    continue
+                while True:
+                    pos, size = self.opens.pop()
+                    del self.open_len[size]
+                    if pos == start:
+                        break
+                while self.spans and self.spans[-1][0] > start:
+                    self.spans.pop()
+                self.spans.append((start, hi))
+            if nl < 0:
+                self.cur = bound
+                if not self.opens and self.cur >= self.probe:
+                    self._mark()
+                return
+            self.opens.clear()
+            self.open_len.clear()
+            self.known = False
+            self.ls = self.cur = nl + 1
+            self._mark()
+
+    def quoted(self, text: str, at: int) -> bool | None:
+        """in_md_code(text, at), where text mostly grows between calls."""
+        if at >= len(text) or text[at] in "`\n":
+            return in_md_code(text, at)
+        self._sync(text)
+        self.forget(at)
+        self._scan(at)
+        if self.fence is not None or (not self.known and _FENCE_OPEN.match(text, self.ls)):
+            return True
+        # Unclosed runs before at (and the run ending at at, settled only
+        # now that at is known not to be a backtick) quote it if a later run
+        # on its line has the same length.
+        sizes = [size for _, size in self.opens]
+        line = max(self.ls, self.spans[-1][1] if self.spans else 0)
+        tick = bool(self.opens) and self.opens[-1][0] >= line
+        run = _TICK_RUN.search(text, self.cur, at)
+        if run:
+            start = self.open_len.get(run.end() - run.start())
+            if start is None:
+                sizes.append(run.end() - run.start())
+                tick = True
+            else:
+                sizes = [size for pos, size in self.opens if pos < start]
+                tick = False
+        if not sizes:
+            return False
+        closed, newline = self._ahead(text, at, sizes)
+        if closed:
+            return True
+        return None if tick and not newline else False
+
+    def _ahead(self, text: str, at: int, sizes: list[int]) -> tuple[bool, bool]:
+        """Whether a backtick run after at on its line has one of sizes, and
+        whether that line ends in text. The runs found are kept: the next
+        lookup is usually the same line grown at its end, or with a tag
+        before them dropped."""
+        look = self._look
+        if look is not None:
+            old, base, end, newline, last, shift, tail = look
+            stop = end + newline
+            # Unchanged where it was scanned, or shifted by text dropped before at.
+            for moved in (0, len(text) - len(old)):
+                if base <= at - moved <= end and (
+                    text is old and not moved or text[at:stop + moved] == old[at - moved:stop]
+                ):
+                    end += moved
+                    shift += moved
+                    break
+            else:
+                look = None
+        if look is None:
+            end, newline, last, shift, tail = at, False, {}, 0, None
+        if not newline:
+            if tail is not None:
+                end, tail = tail + shift, None
+            nl = text.find("\n", end)
+            stop = nl if nl >= 0 else len(text)
+            for run in _TICK_RUN.finditer(text, end, stop):
+                if nl < 0 and run.end() == stop:
+                    tail = run.start() - shift
+                else:
+                    last[run.end() - run.start()] = run.start() - shift
+            end, newline = stop, nl >= 0
+        self._look = (text, at, end, newline, last, shift, tail)
+        tail_size = len(text) - tail - shift if tail is not None else 0
+        after = at - shift
+        closed = any(size == tail_size or last.get(size, after) > after for size in sizes)
+        return closed, newline
+
+
 def extract_text_tool_calls(content: str, *, coding: bool = False) -> tuple[str, list[dict]]:
     """Parse Qwen/Hermes/GLM XML or JSON tool dumps out of assistant content."""
     if not content:
@@ -256,28 +605,28 @@ def extract_text_tool_calls(content: str, *, coding: bool = False) -> tuple[str,
     lowered = content.lower()
     if "<tool" not in lowered and "<function" not in lowered and "<invoke" not in lowered:
         return content, []
-    code = [match.span() for match in _MD_CODE.finditer(content)]
-
-    def quoted(index: int) -> bool:
-        return any(lo <= index < hi for lo, hi in code)
+    quoted = _quoted_in([match.span() for match in _MD_CODE.finditer(content)])
 
     calls: list[dict] = []
 
-    def _replace(match: re.Match) -> str:
-        if quoted(match.start()):
-            return match.group(0)
-        extracted = _calls_from_xml_body(match.group(0), coding=coding, start=len(calls))
+    def _replace(lo: int, hi: int) -> str:
+        block = content[lo:hi]
+        if quoted(lo):
+            return block
+        extracted = _calls_from_xml_body(block, coding=coding, start=len(calls))
         if not extracted:
             # Inner body without the outer tags, in case the regex included them.
-            inner = match.group(0)
-            inner = re.sub(r"^</?tool_calls?\b[^>]*>|</tool_calls?>$", "", inner, flags=re.I | re.S)
+            inner = re.sub(r"^</?tool_calls?\b[^>]*>|</tool_calls?>$", "", block, flags=re.I | re.S)
             extracted = _calls_from_xml_body(inner, coding=coding, start=len(calls))
         if extracted:
             calls.extend(extracted)
             return ""
-        return match.group(0)
+        return block
 
-    cleaned = _TOOL_XML_BLOCK.sub(_replace, content)
+    def _spans(matches):
+        return (match.span() for match in matches)
+
+    cleaned = _sub_spans(content, _tool_xml_blocks(content), _replace)
     if not calls:
         opener = next((m for m in _TOOL_XML_OPEN.finditer(content) if not quoted(m.start())), None)
         if opener:
@@ -286,9 +635,9 @@ def extract_text_tool_calls(content: str, *, coding: bool = False) -> tuple[str,
                 calls.extend(extracted)
                 cleaned = cleaned[: opener.start()]
     if not calls:
-        cleaned = _FUNCTION_XML.sub(_replace, content)
+        cleaned = _sub_spans(content, _spans(_bounded_finditer(_FUNCTION_XML, _FUNCTION_CLOSE, content)), _replace)
     if not calls:
-        cleaned = _INVOKE_XML.sub(_replace, content)
+        cleaned = _sub_spans(content, _spans(_bounded_finditer(_INVOKE_XML, _INVOKE_CLOSE, content)), _replace)
     return cleaned.strip(), calls
 
 

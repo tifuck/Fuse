@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -96,6 +97,14 @@ func main() {
 	}
 }
 
+// traySessionWanted: the tray of an elevated install shares the service's
+// config and token, so it never connects while the service exists. A check of
+// "running" missed StartPending, the recovery delay and an update swap, and
+// the two sessions then replaced each other for good.
+func traySessionWanted(cfgPath string, serviceExists bool) bool {
+	return !serviceExists || !strings.EqualFold(filepath.Clean(cfgPath), filepath.Clean(defaultSystemConfigPath()))
+}
+
 func die(msg string) {
 	log.Printf("fuse-agent: %s", msg)
 	os.Exit(1)
@@ -130,10 +139,7 @@ func runInteractive(cfg *agentConfig, headless bool) {
 		// maybeUpdate holds the reservation across swap and exit.
 		maybeUpdate(cfg, true, s.reserveUpdateAdmission)
 	}
-	startSession := true
-	if serviceRunning() {
-		startSession = false
-	}
+	startSession := traySessionWanted(cfg.Path, serviceInstalled())
 	if headless {
 		runSession(cfg, stop)
 		return

@@ -36,6 +36,8 @@ _failure_lock = threading.Lock()
 _COOLDOWN_KINDS = ("hard", "safe", "limit")
 _cooldown_until: dict[int, dict[str, float]] = {}
 _in_flight: dict[int, int] = {}
+# When each account's last request ended (wall clock), for the usage guard.
+_last_release: dict[int, float] = {}
 # The classified upstream error that last failed each account: (status, body,
 # reset_at). A request that finds every account benched reports it instead of
 # "no accounts" (a rejected sign-in or an outage; limits are not kept).
@@ -131,6 +133,7 @@ def reset_health() -> None:
     with _failure_lock:
         _cooldown_until.clear()
         _in_flight.clear()
+        _last_release.clear()
         _auth_strikes.clear()
         _bench_errors.clear()
 
@@ -212,11 +215,21 @@ def release(cid: int) -> None:
             _in_flight[cid] = left
         else:
             _in_flight.pop(cid, None)
+        _last_release[cid] = time.time()
 
 
 def in_flight(cid: int) -> int:
     with _failure_lock:
         return _in_flight.get(cid, 0)
+
+
+def busy_since(cid: int, since: float | None) -> bool:
+    """Whether a Fuse request on this account is running now or ended at or
+    after `since` (Unix seconds): usage read since may still be landing."""
+    with _failure_lock:
+        if _in_flight.get(cid, 0) > 0:
+            return True
+        return since is not None and _last_release.get(cid, 0.0) >= since
 
 # Codex model docs: Free and Go get GPT-6 Luna; Plus and above get GPT-6 Sol.
 # Go is treated like Free. Astra stays paid-only.
@@ -431,10 +444,10 @@ def pick_account(
     own-first only decides where new or broken sessions go.
 
     hint_id is where a related session (a subagent's parent) is pinned. A new
-    session takes it when it ranks with the best choice (same health tier,
-    ownership and plan tier, under the in-flight ceiling): on a provider that
-    caches prefixes per account, the child then reuses the tools and system
-    prompt its parent already cached instead of writing them again.
+    session takes it whenever it can serve (not cooling, limited or excluded,
+    under the in-flight ceiling), ownership and usage aside: a subagent is part
+    of its chat, so it runs on the account the chat is on (the user's pick
+    included), and reuses the tools and system prompt its parent cached.
 
     An account at the in-flight ceiling is skipped unless every candidate is
     saturated, so load spreads instead of dog-piling the freshest account.
@@ -540,6 +553,10 @@ def pick_account(
         preferred = [row for row in preferred if in_flight(row[5]) < MAX_IN_FLIGHT] or preferred
         if preferred:
             return preferred[0][6], preferred[0][7]
+    if hint_id is not None:
+        for row in ready:
+            if row[5] == int(hint_id) and in_flight(row[5]) < MAX_IN_FLIGHT:
+                return row[6], row[7]
     if not ready:
         if spent:
             # Every benched account is asked once per request: a plan reset
@@ -553,10 +570,6 @@ def pick_account(
     available = [row for row in primary if in_flight(row[5]) < MAX_IN_FLIGHT] or primary
     available.sort(key=lambda row: (row[1], row[2], row[3], row[4], row[5]))
     best = available[0]
-    if hint_id is not None:
-        for row in available:
-            if row[5] == int(hint_id) and row[1:3] == best[1:3] and in_flight(row[5]) < MAX_IN_FLIGHT:
-                return row[6], row[7]
     return best[6], best[7]
 
 
@@ -584,7 +597,21 @@ def _with_reset(body: dict, reset_at: float) -> dict:
     return {**body, "error": inner}
 
 
-def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
+def _sees_raw_error(cred, user_id: int | None) -> bool:
+    """An account's raw upstream error is its owner's (or an admin's) to read."""
+    if user_id is None:
+        return False
+    try:
+        donor = cred["donated_by"]
+    except (KeyError, IndexError, TypeError):
+        donor = None
+    if donor is not None and int(donor) == int(user_id):
+        return True
+    row = db.fetchone("SELECT is_admin FROM users WHERE id=?", (int(user_id),))
+    return bool(row and row["is_admin"])
+
+
+def explain_empty(kind: str, why: list, *, model: str = "", user_id: int | None = None) -> ChatResult:
     """The result for a request whose first pick found no account: why the
     accounts this caller can use are out, and when the first one is back.
 
@@ -592,7 +619,9 @@ def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
     that benched it (auth, permission, outage; never a limit, which
     pick_account sends back upstream), not a bare "no accounts" 503 that
     reads as a transient outage and is retried. The body is raw:
-    api.invoke_chat annotates it like any provider error.
+    api.invoke_chat annotates it like any provider error. Only the account's
+    owner (user_id) or an admin sees that raw error; anyone else gets the
+    generic cooldown with its reset.
     """
     name = provider_errors.label(kind)
     if not why:
@@ -617,7 +646,10 @@ def explain_empty(kind: str, why: list, *, model: str = "") -> ChatResult:
             if kept:
                 status, body, reset_at = kept
                 # A kept reset past the cooldown is the truer time (cooldowns are capped).
-                return ChatResult(status=status, body=_with_reset(body, max(reset_at or 0.0, until)), model=model)
+                until = max(reset_at or 0.0, until)
+                cred = next(c for c, _reason in why if int(c["id"]) == cid)
+                if _sees_raw_error(cred, user_id):
+                    return ChatResult(status=status, body=_with_reset(body, until), model=model)
             return ChatResult(status=503, model=model, body={"error": {
                 "message": f"Every {name} account you can use is cooling down after recent errors.",
                 "code": "service_unavailable", "resets_at": int(until)}})

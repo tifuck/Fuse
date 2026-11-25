@@ -340,6 +340,12 @@ func (s *session) ptyPump(p *ptySlot, c *conPTY, cancel <-chan struct{}) (code u
 			if c.job != 0 {
 				windows.CloseHandle(c.job)
 			}
+			// The waiter still holds c.proc: close it once the shell does
+			// exit, instead of leaking the handle.
+			go func(exited <-chan struct{}, proc windows.Handle) {
+				<-exited
+				windows.CloseHandle(proc)
+			}(exited, c.proc)
 			return 0, false
 		}
 	}

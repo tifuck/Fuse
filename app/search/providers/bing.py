@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import html as html_lib
 import logging
@@ -11,7 +12,7 @@ import httpx
 
 from ..client import read_limited
 from ..ssrf import host_of, public_http_url
-from .base import ProviderResponse, SearchHit, empty_reason, safe_get
+from .base import ProviderResponse, SearchHit, element_html, empty_reason, safe_get, strip_html
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +26,27 @@ _UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
-_TAG = re.compile(r"(?is)<[^>]+>")
 _BLOCK = re.compile(r'class="b_algo"(.*?)(?=class="b_algo"|$)', re.I | re.S)
-_H2 = re.compile(r"<h2[^>]*>(.*?)</h2>", re.I | re.S)
-_CITE = re.compile(r"<cite[^>]*>(.*?)</cite>", re.I | re.S)
-_SNIP = re.compile(r'class="b_lineclamp\d*"[^>]*>(.*?)</p>', re.I | re.S)
+# Openers and closers for base.element_html, which stays linear on hostile
+# pages where "<h2[^>]*>(.*?)</h2>" would rescan from every unclosed <h2.
+_H2 = re.compile(r"<h2", re.I)
+_H2_END = re.compile(r"</h2>", re.I)
+_CITE = re.compile(r"<cite", re.I)
+_CITE_END = re.compile(r"</cite>", re.I)
+_SNIP = re.compile(r'class="b_lineclamp\d*"', re.I)
+_SNIP_END = re.compile(r"</p>", re.I)
 _U = re.compile(r"[?&]u=([A-Za-z0-9_-]+)", re.I)
-_H2_HREF = re.compile(r"<h2[^>]*>.*?<a[^>]+href=\"([^\"]+)\"", re.I | re.S)
+_A_HREF = re.compile(r'<a[^<>]+href="([^"]+)"', re.I)
 MAX_HITS = 8
 
+_strip = strip_html
 
-def _strip(text: str) -> str:
-    text = html_lib.unescape(_TAG.sub(" ", text or ""))
-    return re.sub(r"\s+", " ", text).strip()
+
+def _h2_href(block: str) -> str:
+    h2 = _H2.search(block)
+    gt = block.find(">", h2.end()) if h2 else -1
+    href = _A_HREF.search(block, gt + 1) if gt >= 0 else None
+    return href.group(1) if href else ""
 
 
 def _decode_u(raw: str) -> str:
@@ -62,8 +71,8 @@ def _target_url(block: str) -> str:
     ("&amp;u=a1aHR0cHM6..."): unescape before matching, or every hit falls
     back to the <cite> text, which is only a breadcrumb ("host › path").
     """
-    href = _H2_HREF.search(block)
-    candidates = [html_lib.unescape(href.group(1))] if href else []
+    href = _h2_href(block)
+    candidates = [html_lib.unescape(href)] if href else []
     candidates.append(html_lib.unescape(block))
     for text in candidates:
         if text.startswith("http") and "bing.com" not in (urlparse(text).hostname or ""):
@@ -79,10 +88,10 @@ def _target_url(block: str) -> str:
 
 
 def _cite_url(block: str) -> str:
-    cite = _CITE.search(block)
-    if not cite:
+    cite = element_html(block, _CITE, _CITE_END)
+    if cite is None:
         return ""
-    text = _strip(cite.group(1))
+    text = _strip(cite)
     if "›" in text:
         # Breadcrumb ("https://host › a › b"): only the host is real.
         return ""
@@ -100,9 +109,9 @@ def parse_bing_html(raw: str) -> list[SearchHit]:
     seen: set[str] = set()
     for block in _BLOCK.findall(raw or ""):
         title = ""
-        h2 = _H2.search(block)
-        if h2:
-            title = _strip(h2.group(1))
+        h2 = element_html(block, _H2, _H2_END)
+        if h2 is not None:
+            title = _strip(h2)
         url = _target_url(block)
         cite_url = _cite_url(block)
         if cite_url and (not url or len(cite_url.rstrip("/")) > len(url.rstrip("/"))):
@@ -112,8 +121,8 @@ def parse_bing_html(raw: str) -> list[SearchHit]:
         if "bing.com" in (urlparse(url).hostname or ""):
             continue
         seen.add(url)
-        snip_m = _SNIP.search(block)
-        snippet = _strip(snip_m.group(1))[:300] if snip_m else ""
+        snip = element_html(block, _SNIP, _SNIP_END)
+        snippet = _strip(snip)[:300] if snip is not None else ""
         hits.append(SearchHit(title=title[:200], url=url, snippet=snippet, provider="bing", rank=len(hits)))
         if len(hits) >= MAX_HITS:
             break
@@ -166,7 +175,7 @@ class BingProvider:
         except (httpx.HTTPError, ValueError) as exc:
             logger.error("fuse.search provider=bing error=%s", type(exc).__name__)
             return ProviderResponse(hits=[], status=0, error="http", last_timeout=timeout)
-        hits = parse_bing_html(body)
+        hits = await asyncio.to_thread(parse_bing_html, body)
         error = None if hits else empty_reason(body, 'class="b_algo"')
         if error:
             logger.warning("fuse.search provider=bing status=200 error=%s body_len=%s", error, len(body or ""))

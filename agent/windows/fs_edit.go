@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -42,7 +43,18 @@ func writeFileAtomicLimit(path, content string, max int) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, ".fuse-*.tmp")
+	pin, err := pinDir(dir)
+	if err != nil {
+		return err
+	}
+	defer pin.release()
+	tmp, err := pin.createTemp()
+	if err != nil && !os.IsPermission(err) {
+		// shortcut: the by-handle create has not run on every Windows
+		// build; fall back to a path create, still checked by inDir below.
+		log.Printf("fuse-agent: create by folder handle failed (%v); creating by path", err)
+		tmp, err = os.CreateTemp(dir, ".fuse-*.tmp")
+	}
 	if err != nil {
 		// Directory not writable but the file is: rewrite the file itself.
 		if exists && os.IsPermission(err) {
@@ -51,6 +63,11 @@ func writeFileAtomicLimit(path, content string, max int) error {
 		return err
 	}
 	tmpName := tmp.Name()
+	if err := pin.inDir(tmp); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
 	if err := tmp.Chmod(mode); err != nil && runtime.GOOS != "windows" {
 		tmp.Close()
 		os.Remove(tmpName)
@@ -59,7 +76,7 @@ func writeFileAtomicLimit(path, content string, max int) error {
 	if exists {
 		// Before any content lands: the temp file starts with the
 		// directory's inherited ACL, not the original file's.
-		if err := copyFileSecurity(path, tmpName); err != nil {
+		if err := copyFileSecurity(path, tmp); err != nil {
 			tmp.Close()
 			os.Remove(tmpName)
 			// Cannot carry the original's access over: rewrite the file
@@ -77,15 +94,25 @@ func writeFileAtomicLimit(path, content string, max int) error {
 		os.Remove(tmpName)
 		return err
 	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return err
+	// Renamed through the still open handle: on Windows that handle is
+	// what carries the rename, relative to the pinned folder.
+	if err := pin.rename(tmp, filepath.Base(path)); err != nil {
+		// Same fallback as the create: rename by path after re-checking
+		// the temp file still sits in the pinned folder.
+		log.Printf("fuse-agent: rename by folder handle failed (%v); renaming by path", err)
+		if err := pin.inDir(tmp); err != nil {
+			tmp.Close()
+			os.Remove(tmpName)
+			return err
+		}
+		tmp.Close()
+		if err := os.Rename(tmpName, path); err != nil {
+			os.Remove(tmpName)
+			return err
+		}
+		return nil
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return tmp.Close()
 }
 
 // inPlaceFile is the write handle writeInPlace needs; the var is a seam so

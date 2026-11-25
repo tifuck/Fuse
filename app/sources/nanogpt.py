@@ -948,7 +948,7 @@ class NanoGPTSource:
                 # `usable` also refuses keys that cannot serve this model, so
                 # only a benched account explains more than the refusal above.
                 if not tried and any(reason in ("cooling", "held") for _, reason in why):
-                    last = explain_empty("nanogpt", why, model=upstream)
+                    last = explain_empty("nanogpt", why, model=upstream, user_id=user_id)
                 if attempts and last.credential_id == attempts[-1].get("credential_id"):
                     attempts.pop()
                 last.attempts = attempts
@@ -1029,6 +1029,6 @@ class NanoGPTSource:
                 elif status == "failed":
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
-        result = ChatResult(status=200, stream=UsageStream(run(), collected, on_close=lambda: release(cid)), credential_id=cid, model=model)
+        result = ChatResult(status=200, stream=UsageStream(run(), collected, on_close=lambda: release(cid), cleanup=(stream.aclose,)), credential_id=cid, model=model)
         result.attempts = attempts
         return result

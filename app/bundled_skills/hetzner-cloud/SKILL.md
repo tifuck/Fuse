@@ -21,6 +21,7 @@ Script: `scripts/hcloud.py` (Python 3.8+, stdlib, plus the system `ssh`/`scp`/`s
    - The script creates a dedicated agent key (`~/.ssh/hcloud-fuse_ed25519`) on this machine, uploads it to Hetzner, and injects it. It returns after SSH works, with `ssh_ready: true`.
    - `--setup FILE` runs a bash hook once cloud-init has finished. A non-zero `setup_exit` makes create exit non-zero.
    - Without `--yes`, create prints the quote, exits 2, and changes nothing.
+   - A server created with no SSH key (`--no-agent-key` and no `--ssh-key`) gets a root password from Hetzner. It is never printed: `root_password_file` names the 0600 file that holds it. Give the user the path, not the password.
 
 ## Use the VM
 - Foreground: `H run N -- 'apt-get update && make test'`, or `H run N --script job.sh`, or pipe with `--script -`. Scripts of any size go over stdin. Exit code and output pass through. `--timeout S` kills the remote side too and exits 124.

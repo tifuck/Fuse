@@ -1,7 +1,7 @@
 """Paced background refresh of paid pool usage.
 
 One live credential at a time, oldest-checked first, with a sleep between
-hops. Free ChatGPT plans are skipped. Page loads never call this.
+hops, and none read again within WALK_MIN_AGE. Free ChatGPT plans are skipped. Page loads never call this.
 """
 from __future__ import annotations
 
@@ -26,6 +26,9 @@ from .pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type
 logger = logging.getLogger(__name__)
 
 WALK_PAUSE = 20.0
+# An account read this recently is not read again, so a small pool is not
+# re-read every WALK_PAUSE: the walk idles until its stalest account ages past it.
+WALK_MIN_AGE = 120.0
 WALK_KINDS = tuple(spec.id for spec in registry.specs() if spec.usage_walk)
 # Credential id -> when its last refresh raised. A failing refresher never
 # stamps checked_at, so without this the walk would retry that one forever.
@@ -89,6 +92,10 @@ def _is_paid(kind: str, extra: dict) -> bool:
 
 
 def usage_targets() -> list[tuple[str, object]]:
+    return [(kind, row) for kind, row, _ in _targets()]
+
+
+def _targets() -> list[tuple[str, object, datetime]]:
     placeholders = ",".join("?" * len(WALK_KINDS))
     rows = db.fetchall(
         f"""SELECT c.id, c.extra, s.type AS source_type
@@ -112,14 +119,14 @@ def usage_targets() -> list[tuple[str, object]]:
         when = max(when, _failed_at.get(int(row["id"]), when))
         targets.append((kind, row, when))
     targets.sort(key=lambda item: (item[2], int(item[1]["id"])))
-    return [(kind, row) for kind, row, _ in targets]
+    return targets
 
 
 def _next_target() -> tuple[str, object] | None:
-    targets = usage_targets()
-    if not targets:
+    targets = _targets()
+    if not targets or (datetime.now(timezone.utc) - targets[0][2]).total_seconds() < WALK_MIN_AGE:
         return None
-    kind, row = targets[0]
+    kind, row, _ = targets[0]
     cred = db.fetchone(
         """SELECT c.*, s.type AS source_type
            FROM credentials c JOIN sources s ON s.id=c.source_id WHERE c.id=?""",
@@ -149,6 +156,10 @@ async def refresh_one_usage(kind: str, cred) -> None:
         await nanogpt_mod.refresh_usage(cred, force=True)
     elif kind == "refuseless":
         await refuseless_mod.refresh_usage(cred, force=True)
+    else:
+        # Counted as a failure, so an unhandled kind goes to the back of the
+        # walk instead of staying its stalest account forever.
+        raise ValueError(f"no usage refresh for {kind}")
 
 
 async def walk_next() -> str | None:

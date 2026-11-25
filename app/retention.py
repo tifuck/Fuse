@@ -353,7 +353,7 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
 def prune_history(*, now: datetime | None = None) -> dict:
     """Age out terminal fire/command history older than HISTORY_DAYS."""
     cutoff = _iso((now or datetime.now(timezone.utc)) - timedelta(days=HISTORY_DAYS))
-    counts = {"fires": 0, "jobs": 0, "terminals": 0, "orphan_runs": 0}
+    counts = {"fires": 0, "jobs": 0, "orphan_jobs": 0, "terminals": 0, "orphan_runs": 0}
     fires = "status NOT IN ('queued','running') AND finished_at IS NOT NULL AND finished_at < ?"
     counts["fires"] = _delete_ids("schedule_fires", db.fetchall(f"SELECT id FROM schedule_fires WHERE {fires}", (cutoff,)),
                                   fires, (cutoff,))
@@ -361,6 +361,14 @@ def prune_history(*, now: datetime | None = None) -> dict:
         jobs = "status NOT IN ('running','cancelling') AND finished_at IS NOT NULL AND finished_at < ?"
         counts["jobs"] = _delete_ids("command_jobs", db.fetchall(f"SELECT id FROM command_jobs WHERE {jobs}", (cutoff,)),
                                      jobs, (cutoff,))
+        # command_jobs has no foreign keys (adding one copies the table): jobs
+        # whose account or chat an older path deleted without them.
+        gone = """status NOT IN ('running','cancelling')
+                  AND (NOT EXISTS (SELECT 1 FROM users u WHERE u.id=command_jobs.user_id)
+                       OR (thread_id IS NOT NULL
+                           AND NOT EXISTS (SELECT 1 FROM chat_threads t WHERE t.id=command_jobs.thread_id)))"""
+        counts["orphan_jobs"] = _delete_ids("command_jobs", db.fetchall(f"SELECT id FROM command_jobs WHERE {gone}"),
+                                            gone, ())
     with db.tx() as conn:
         if conn.native("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE()"
                        " AND table_name='terminal_sessions'").fetchone():

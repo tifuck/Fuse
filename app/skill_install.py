@@ -1,6 +1,7 @@
 """Disk persist, zip/md upload, skills.sh search, GitHub zipball install."""
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import io
 import logging
@@ -497,11 +498,23 @@ def _site_token(value: str) -> str:
     return "" if egress.current() else (value or "").strip()
 
 
+_github_user: contextvars.ContextVar[int | None] = contextvars.ContextVar("fuse_skills_github_user", default=None)
+
+
 def _github_cap() -> int:
-    return 200 if (settings.github_token or "").strip() else 20
+    return 400 if (settings.github_token or "").strip() else 40
+
+
+def _github_user_cap() -> int:
+    """One user's share of the hourly GitHub budget, so nobody drains it for all."""
+    return 100 if (settings.github_token or "").strip() else 15
 
 
 def _take_github() -> None:
+    # The user's own bucket first: a refused request must not spend the shared one.
+    uid = _github_user.get()
+    if uid is not None and not limiter.allow(f"skills-github:{uid}", _github_user_cap(), 3600):
+        raise SkillError("Install rate limit reached. Try again shortly.", 429)
     if not limiter.allow("skills-github:global", _github_cap(), 3600):
         raise SkillError("Install rate limit reached. Try again shortly.", 429)
 
@@ -697,7 +710,15 @@ async def _fallback_contents(owner: str, repo: str, skill_id: str, branch: str) 
     return files
 
 
-async def fetch_github_skill(source: str, skill_id: str) -> dict[str, bytes]:
+async def fetch_github_skill(source: str, skill_id: str, *, user_id: int) -> dict[str, bytes]:
+    token = _github_user.set(int(user_id))
+    try:
+        return await _fetch_github_skill(source, skill_id)
+    finally:
+        _github_user.reset(token)
+
+
+async def _fetch_github_skill(source: str, skill_id: str) -> dict[str, bytes]:
     if not valid_github_source(source):
         raise SkillError("invalid source")
     if not NAME_RE.fullmatch(skill_id or "") and not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", skill_id or ""):

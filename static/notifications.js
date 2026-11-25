@@ -6,6 +6,15 @@
    driven by the live chat event socket while this app is open. */
 (() => {
   "use strict";
+  // Signing out drops queued chat messages (static/chat/turns/queue-store.js):
+  // they hold prompt text. Set before the check below, so it runs everywhere.
+  document.addEventListener("submit", (ev) => {
+    if (!(ev.target instanceof HTMLFormElement) || ev.target.getAttribute("action") !== "/logout") return;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("fuse.chat.queue.")) localStorage.removeItem(key);
+    }
+  });
   if (!("serviceWorker" in navigator)) return;
 
   const csrf = () => {
@@ -24,12 +33,18 @@
   }
 
   // Signing out stops this device's alerts: otherwise chat titles and reply
-  // previews keep arriving on a signed-out (possibly shared) device.
-  async function dropDeviceSubscription() {
+  // previews keep arriving on a signed-out (possibly shared) device. The
+  // sign-out itself carries the endpoint, so the server drops it even when
+  // the browser's own unsubscribe does not finish in time.
+  async function dropDeviceSubscription(form) {
     const reg = await navigator.serviceWorker.getRegistration("/").catch(() => null);
     const sub = reg && "PushManager" in window ? await reg.pushManager.getSubscription().catch(() => null) : null;
     if (!sub) return;
-    await post("/notifications/unsubscribe", { endpoint: sub.endpoint }).catch(() => {});
+    const field = document.createElement("input");
+    field.type = "hidden";
+    field.name = "push_endpoint";
+    field.value = sub.endpoint;
+    form.appendChild(field);
     await sub.unsubscribe().catch(() => {});
   }
 
@@ -39,7 +54,7 @@
     ev.preventDefault();
     form.dataset.pushCleared = "1";
     const timeout = new Promise((resolve) => setTimeout(resolve, 2500));
-    Promise.race([dropDeviceSubscription(), timeout]).finally(() => form.submit());
+    Promise.race([dropDeviceSubscription(form), timeout]).finally(() => form.submit());
   });
 
   const btn = document.querySelector("[data-notif-toggle]");

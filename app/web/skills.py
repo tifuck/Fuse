@@ -200,7 +200,7 @@ async def skills_install(request: Request):
         raise HTTPException(400, "invalid source")
     try:
         with egress.through(user["id"]):
-            files = await fetch_github_skill(source, skill_id)
+            files = await fetch_github_skill(source, skill_id, user_id=user["id"])
         row = await asyncio.to_thread(
             skills.install_files,
             user["id"],

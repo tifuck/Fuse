@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import math
 import re
@@ -9,6 +10,10 @@ import httpx
 
 
 _MAX_USAGE_VALUE = 9_000_000_000_000_000
+
+# Cancel message for a stream read abandoned because the upstream went silent:
+# the request failed, it was not cancelled by the client.
+STREAM_STALLED = "fuse: upstream stream stalled"
 
 _SECRET_PATTERNS = (
     (re.compile(r"sk-[A-Za-z0-9_-]{8,}"), "sk-***"),
@@ -218,13 +223,17 @@ class UsageStream:
     reject arbitrary attributes, so ChatResult.stream cannot hang usage on gen itself.
     """
 
-    def __init__(self, agen, usage: dict, on_close=None, hints: dict | None = None):
+    def __init__(self, agen, usage: dict, on_close=None, hints: dict | None = None, cleanup=()):
         self._agen = agen
         self.usage = usage
         # Live non-usage signals from a translating source, e.g. the name of a
         # tool call it is still assembling ("tool_call"). Never billed.
         self.hints = hints if hints is not None else {}
         self._on_close = on_close
+        # Async closers for what agen's finally releases (the upstream
+        # response, an inner stream). A generator closed before its first
+        # chunk never runs its finally, so aclose() runs these instead.
+        self._cleanup = cleanup
         self._closed = False
 
     def __aiter__(self):
@@ -248,9 +257,15 @@ class UsageStream:
 
     async def aclose(self):
         try:
+            unstarted = (inspect.isasyncgen(self._agen)
+                         and inspect.getasyncgenstate(self._agen) == inspect.AGEN_CREATED)
             close = getattr(self._agen, "aclose", None)
             if close is not None:
                 await close()
+            if unstarted:
+                for close in self._cleanup:
+                    if close is not None:
+                        await close()
         finally:
             await self._finish()
 
@@ -328,6 +343,10 @@ def _json_request(client: httpx.AsyncClient, url: str, content: bytes, headers: 
     return req
 
 
+# A whole (non-streamed) completion; a streamed one is read frame by frame.
+RESPONSE_BODY_MAX = 32 * 1024 * 1024
+
+
 def _chat_failure(status: int, message: str, phase: str, usage: dict | None = None) -> tuple:
     return status, {"error": {
         "message": message, "failure_phase": phase, "retryable": phase == "pre_generation",
@@ -348,6 +367,8 @@ async def openai_chat(
 
     on_response(resp) sees the upstream response as soon as its headers
     arrive, for per-request capture on a shared client."""
+    from .sources.http_pool import read_error_body
+
     payload = dict(body)
     stream = bool(payload.get("stream"))
     if stream:
@@ -379,7 +400,7 @@ async def openai_chat(
             if resp.headers.get("retry-after"):
                 safe_headers["Retry-After"] = resp.headers["retry-after"][:128]
             try:
-                err = await resp.aread()
+                err = await read_error_body(resp)
             except httpx.TimeoutException as exc:
                 return 504, {"error": {"message": f"upstream timeout ({type(exc).__name__})"}}, None, {}, safe_headers
             except httpx.HTTPError as exc:
@@ -391,6 +412,11 @@ async def openai_chat(
             return resp.status_code, _error_object(resp.status_code, err, resp.headers), None, {}, safe_headers
 
         collected: dict = {}
+
+        async def close_upstream() -> None:
+            await resp.aclose()
+            if close_client:
+                await client.aclose()
 
         async def gen() -> AsyncIterator[bytes]:
             buf = b""
@@ -440,33 +466,44 @@ async def openai_chat(
                 if collected.get("stream_status") != "complete":
                     collected["stream_status"] = "failed"
             finally:
-                await resp.aclose()
-                if close_client:
-                    await client.aclose()
+                await close_upstream()
 
         # Same dict the generator mutates. Pool sources wrap this for sticky
         # cache routing; returning {} here dropped stream usage and skipped bind.
-        return 200, None, UsageStream(gen(), collected), collected, {}
+        return 200, None, UsageStream(gen(), collected, cleanup=(close_upstream,)), collected, {}
 
     try:
         content = await asyncio.to_thread(_json_body, payload)
         try:
-            resp = await client.send(_json_request(client, url, content, headers))
+            resp = await client.send(_json_request(client, url, content, headers), stream=True)
         except httpx.TimeoutException as exc:
             return _chat_failure(504, f"upstream timeout ({type(exc).__name__})",
                                  "pre_generation" if isinstance(exc, (httpx.ConnectTimeout, httpx.PoolTimeout)) else "request_sent")
         except httpx.HTTPError as exc:
             return _chat_failure(502, f"upstream transport failure ({type(exc).__name__})",
                                  "pre_generation" if isinstance(exc, httpx.ConnectError) else "request_sent")
-        if on_response is not None:
-            on_response(resp)
-        if resp.status_code != 200:
-            safe_headers = {}
-            if resp.headers.get("retry-after"):
-                safe_headers["Retry-After"] = resp.headers["retry-after"][:128]
-            return resp.status_code, _error_object(resp.status_code, resp.content, resp.headers), None, {}, safe_headers
         try:
-            obj = resp.json()
+            if on_response is not None:
+                on_response(resp)
+            if resp.status_code != 200:
+                safe_headers = {}
+                if resp.headers.get("retry-after"):
+                    safe_headers["Retry-After"] = resp.headers["retry-after"][:128]
+                err = await read_error_body(resp)
+                return resp.status_code, _error_object(resp.status_code, err, resp.headers), None, {}, safe_headers
+            raw = bytearray()
+            async for chunk in resp.aiter_bytes():
+                raw += chunk
+                if len(raw) > RESPONSE_BODY_MAX:
+                    return _chat_failure(502, "upstream response is too large", "response_received")
+        except httpx.TimeoutException as exc:
+            return _chat_failure(504, f"upstream timeout ({type(exc).__name__})", "request_sent")
+        except httpx.HTTPError as exc:
+            return _chat_failure(502, f"upstream transport failure ({type(exc).__name__})", "request_sent")
+        finally:
+            await resp.aclose()
+        try:
+            obj = json.loads(raw)
         except ValueError:
             return _chat_failure(502, "upstream returned non-JSON data", "response_received")
         if not isinstance(obj, dict):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+from . import pool_policy
 from .base import map_effort
 from .chatgpt_catalog import FAST_SERVICE_TIER, base_slug, catalog_efforts, is_fast, reasoning_all_turns, sends_summary
 
@@ -231,12 +232,20 @@ def _same_account(raw, account) -> bool:
         return False
 
 
-def for_account(payload: dict, account) -> dict:
-    """The payload one pooled account may receive.
+# Reasoning fields a request on another user's account may carry (see
+# pool_policy.BORROWED_FIELDS); "context" is the all-turns mode Fuse sets.
+BORROWED_REASONING = ("effort", "summary", "context")
+
+
+def for_account(payload: dict, row, user_id: int | None) -> dict:
+    """The payload one pooled account (credential row) may receive.
 
     Encrypted reasoning decrypts only for the account that produced it, so
     other accounts get those items dropped (their cache is cold anyway).
+    Another user's account gets no service tier and only the reasoning
+    fields in BORROWED_REASONING, like pool_policy.lent_payload.
     """
+    account = row["id"]
     items = []
     for item in payload.get("input") or []:
         if isinstance(item, dict) and item.get("type") == "reasoning":
@@ -244,7 +253,17 @@ def for_account(payload: dict, account) -> dict:
                 continue
             item = {k: v for k, v in item.items() if k != "_fuse_account"}
         items.append(item)
-    return {**payload, "input": items}
+    out = {**payload, "input": items}
+    if pool_policy.borrowed(row, user_id):
+        out.pop("service_tier", None)
+        reasoning = out.get("reasoning")
+        if isinstance(reasoning, dict):
+            kept = {k: v for k, v in reasoning.items() if k in BORROWED_REASONING}
+            if kept:
+                out["reasoning"] = kept
+            else:
+                out.pop("reasoning")
+    return out
 
 
 def drop_reasoning(payload: dict) -> bool:

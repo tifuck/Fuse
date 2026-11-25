@@ -1,3 +1,4 @@
+import heapq
 import hmac
 import logging
 import re
@@ -52,6 +53,10 @@ async def csrf_guard(request: Request) -> None:
 
 
 class RateLimiter:
+    # Hard cap on tracked keys: past it the expired ones go, then the ones
+    # closest to expiry, so unauthenticated keys cannot grow memory unbounded.
+    MAX_KEYS = 100_000
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._hits: dict[str, list[float]] = defaultdict(list)
@@ -62,20 +67,27 @@ class RateLimiter:
         now = time.monotonic()
         cutoff = now - window
         with self._lock:
-            stamps = [t for t in self._hits[key] if t > cutoff]
+            stamps = [t for t in self._hits[key] if t > cutoff][-max(limit, 1):]
             if len(stamps) >= limit:
                 self._hits[key] = stamps
+                self._expires.setdefault(key, now + window)
                 return False
             stamps.append(now)
             self._hits[key] = stamps
             self._expires[key] = now + window
             if len(self._hits) > 8192 and now >= self._next_cleanup:
                 self._next_cleanup = now + 60
-                stale = [k for k, expiry in self._expires.items() if expiry <= now]
-                for k in stale:
-                    self._hits.pop(k, None)
-                    self._expires.pop(k, None)
+                self._drop([k for k, expiry in self._expires.items() if expiry <= now])
+            if len(self._hits) > self.MAX_KEYS:
+                excess = len(self._hits) - self.MAX_KEYS * 9 // 10
+                if excess > 0:
+                    self._drop(heapq.nsmallest(excess, self._expires, key=self._expires.__getitem__))
             return True
+
+    def _drop(self, keys) -> None:
+        for k in keys:
+            self._hits.pop(k, None)
+            self._expires.pop(k, None)
 
     def retry_after(self, key: str, limit: int, window: float) -> float:
         """Seconds until allow(key, limit, window) would admit one more."""

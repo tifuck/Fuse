@@ -691,7 +691,7 @@ class OllamaSource:
                         if sticky and collected.get("stream_status") == "complete":
                             await asyncio.to_thread(bind, self.pin_kind, session_id, cid)
 
-                gen = UsageStream(_bind_on_finish(), collected)
+                gen = UsageStream(_bind_on_finish(), collected, cleanup=(response.aclose,))
                 return ChatResult(
                     status=200,
                     stream=gen,

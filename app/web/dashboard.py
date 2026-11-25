@@ -421,9 +421,10 @@ async def admin_users_delete(request: Request, user_id: int):
     if redir:
         return redir
     try:
-        email = accounts.delete_user(user_id, actor_id=user["id"])
+        email = await asyncio.to_thread(accounts.delete_user, user_id, actor_id=user["id"])
     except ValueError as exc:
-        return _admin_users_page(
+        return await asyncio.to_thread(
+            _admin_users_page,
             request,
             user,
             error=_USER_DELETE_ERRORS.get(str(exc), "Could not delete that account."),

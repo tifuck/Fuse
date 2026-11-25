@@ -155,7 +155,9 @@ def _auth_client(timeout: float = 20) -> httpx.AsyncClient:
     per_loop = _auth_clients.setdefault(asyncio.get_running_loop(), {})
     found = per_loop.get((proxy, timeout))
     if found is None or found.is_closed:
-        found = per_loop[(proxy, timeout)] = httpx.AsyncClient(timeout=timeout, proxy=proxy)
+        found = per_loop[(proxy, timeout)] = httpx.AsyncClient(
+            timeout=timeout, proxy=proxy, cookies=http_pool.no_cookies()
+        )
     return found
 
 
@@ -798,6 +800,7 @@ async def refresh_pool_usage(*, force: bool = False) -> None:
 
 class ChatGPTSource:
     type_id = "chatgpt"
+    whole_catalog = True  # models() drops ids the provider retired
 
     def __init__(self, row, cfg: dict, creds):
         self.source_id = row["id"]
@@ -895,7 +898,7 @@ class ChatGPTSource:
             picked = self._pick(model, exclude=tried, prefer_id=prefer_id, owner_id=user_id, hint_id=hint_id, primary_id=primary_id, why=why)
             if not picked:
                 if not tried:
-                    last = explain_empty("chatgpt", why, model=model)
+                    last = explain_empty("chatgpt", why, model=model, user_id=user_id)
                 if attempts and last.credential_id == attempts[-1].get("credential_id"):
                     attempts.pop()
                 last.attempts = attempts
@@ -911,7 +914,7 @@ class ChatGPTSource:
             try:
                 reserve(cred["id"])
                 try:
-                    resp = await self._post(token, account_id, for_account(payload, cred["id"]), client,
+                    resp = await self._post(token, account_id, for_account(payload, cred, user_id), client,
                                             _turn_state(cred["id"], turn_key))
                 except httpx.TimeoutException as exc:
                     last = ChatResult(
@@ -948,7 +951,7 @@ class ChatGPTSource:
                             extra = accounts.cred_extra(row)
                             token = extra.get("access_token") or accounts.cred_secret(row)
                             account_id = extra.get("account_id") or None
-                        resp = await self._post(token, account_id, for_account(payload, cred["id"]), client,
+                        resp = await self._post(token, account_id, for_account(payload, cred, user_id), client,
                                                 _turn_state(cred["id"], turn_key))
                 if resp.status_code != 200:
                     obj = await _error_body(resp)
@@ -1022,6 +1025,7 @@ class ChatGPTSource:
                         _bind_on_finish(),
                         collected,
                         on_close=lambda: release(cred["id"]),
+                        cleanup=(resp.aclose,),
                     )
                     result = ChatResult(status=200, stream=stream, credential_id=cred["id"], model=model)
                     result.attempts = attempts

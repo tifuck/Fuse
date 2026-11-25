@@ -32,6 +32,9 @@ try:
 
     HAVE_PYWEBPUSH = True
     _session = requests.Session()
+    # A push service answers; it never redirects. Following one would POST
+    # to a host the allowlist never saw.
+    _session.max_redirects = 0
 except Exception:  # pragma: no cover - dependency missing
     webpush = None
     WebPushException = Exception
@@ -53,7 +56,6 @@ _PUSH_HOSTS = frozenset({
     "android.googleapis.com",
     "updates.push.services.mozilla.com",
     "push.apple.com",
-    "pushd.com",
 })
 _PUSH_HOST_SUFFIXES = (
     ".push.apple.com",
@@ -212,7 +214,7 @@ def count_for(user_id: int) -> int:
 
 def owns(user_id: int, endpoint: str) -> bool:
     return db.fetchone(
-        "SELECT 1 FROM push_subscriptions WHERE user_id=? AND endpoint=?", (user_id, endpoint)
+        "SELECT 1 FROM push_subscriptions WHERE user_id=? AND endpoint=?", (user_id, push_endpoint(endpoint))
     ) is not None
 
 
@@ -225,23 +227,19 @@ def subscriptions_for(user_id: int) -> list:
 
 def save_subscription(user_id: int, endpoint: str, p256dh: str, auth: str, user_agent: str = "") -> None:
     """Store a device subscription. Raises ValueError when the endpoint is not
-    a push service or already belongs to another account."""
+    a push service. An endpoint registered to another account moves to this
+    one: only the browser holding the subscription knows it, and that browser
+    is now signed in here."""
     endpoint = push_endpoint(endpoint)
     if not endpoint:
         raise ValueError("endpoint is not a supported push service")
     with db.tx() as conn:
-        row = conn.execute("SELECT user_id FROM push_subscriptions WHERE endpoint=?", (endpoint,)).fetchone()
-        if row is not None and int(row["user_id"]) != int(user_id):
-            raise ValueError("endpoint is registered to another account")
-        # The WHERE guard keeps a racing insert for another account from being
-        # silently reassigned by this upsert.
         conn.execute(
             """INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at)
                VALUES (?,?,?,?,?,?)
                ON CONFLICT(endpoint) DO UPDATE SET
                  user_id=excluded.user_id, p256dh=excluded.p256dh, auth=excluded.auth,
-                 user_agent=excluded.user_agent
-               WHERE push_subscriptions.user_id=excluded.user_id""",
+                 user_agent=excluded.user_agent""",
             (user_id, endpoint, p256dh, auth, user_agent, db.now()),
         )
         rows = conn.execute(
@@ -257,16 +255,18 @@ def save_subscription(user_id: int, endpoint: str, p256dh: str, auth: str, user_
 
 
 def remove_subscription(user_id: int, endpoint: str) -> None:
+    # Rows hold the rebuilt form; the raw one catches rows from before it.
     db.execute(
-        "DELETE FROM push_subscriptions WHERE user_id=? AND endpoint=?",
-        (user_id, endpoint),
+        "DELETE FROM push_subscriptions WHERE user_id=? AND endpoint IN (?,?)",
+        (user_id, endpoint, push_endpoint(endpoint)),
     )
 
 
 def remove_others(user_id: int, keep: str = "") -> None:
     """A password change signs every other session out; their devices must
     stop receiving chat titles and reply previews too."""
-    db.execute("DELETE FROM push_subscriptions WHERE user_id=? AND endpoint<>?", (user_id, keep or ""))
+    db.execute("DELETE FROM push_subscriptions WHERE user_id=? AND endpoint NOT IN (?,?)",
+               (user_id, keep or "", push_endpoint(keep)))
 
 
 def _send_one(row, payload: str) -> bool:

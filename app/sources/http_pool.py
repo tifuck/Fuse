@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import weakref
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 
 import httpx
 
@@ -18,6 +19,12 @@ import httpx
 # requests behind them (the per-request clients this replaces had none).
 _LIMITS = httpx.Limits(max_connections=None, max_keepalive_connections=20)
 _clients: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def no_cookies() -> CookieJar:
+    """A jar that keeps nothing: a shared client serves every account, so a
+    Set-Cookie from one account's upstream must never ride on the next."""
+    return CookieJar(policy=DefaultCookiePolicy(allowed_domains=[]))
 
 
 def client(timeout, *, verify=True) -> httpx.AsyncClient:
@@ -28,8 +35,35 @@ def client(timeout, *, verify=True) -> httpx.AsyncClient:
     found = per_loop.get(key)
     if found is None or found.is_closed:
         # Looked up at creation: tests patch httpx.AsyncClient per case.
-        found = per_loop[key] = httpx.AsyncClient(timeout=t, verify=verify, limits=_LIMITS)
+        found = per_loop[key] = httpx.AsyncClient(
+            timeout=t, verify=verify, limits=_LIMITS, cookies=no_cookies()
+        )
     return found
+
+
+# An upstream error body is read only this far: a proxy's error page or a
+# misbehaving server can send anything, and only its start is ever shown.
+ERROR_BODY_LIMIT = 64 * 1024
+
+
+async def read_error_body(resp: httpx.Response, limit: int = ERROR_BODY_LIMIT) -> bytes:
+    """Up to `limit` bytes of a (streamed) error response's body. Reading it
+    again returns the same bytes; the caller still closes the response."""
+    kept = resp.extensions.get("fuse_error_body")
+    if kept is not None:
+        return kept
+    try:
+        data = resp.content[:limit]
+    except httpx.ResponseNotRead:
+        chunks, size = [], 0
+        async for chunk in resp.aiter_bytes():
+            chunks.append(chunk)
+            size += len(chunk)
+            if size >= limit:
+                break
+        data = b"".join(chunks)[:limit]
+    resp.extensions["fuse_error_body"] = data
+    return data
 
 
 async def aclose_all() -> None:

@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 WORKER = Path(__file__).with_name("code_worker.py")
 HEAP_MB = 64
+# A server that is not root has no uid to drop the worker to, so the worker
+# refuses to run. Only the test suite (unprivileged, nothing to protect) sets this.
+UNCONFINED = False
 MAX_CALLS = 500
 CHILD_CONCURRENCY = 16
 DEFAULT_TIMEOUT_MS = 300_000
@@ -372,7 +375,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-I", str(WORKER), str(HEAP_MB),
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        env={}, cwd="/", limit=MESSAGE_LIMIT,
+        env={"FUSE_CODE_UNCONFINED": "1"} if UNCONFINED else {}, cwd="/", limit=MESSAGE_LIMIT,
     )
 
     def send(obj) -> None:

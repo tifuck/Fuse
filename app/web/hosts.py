@@ -157,7 +157,7 @@ async def hosts_patch(request: Request, host_id: int):
         return err
     raw = await _json_object(request)
     try:
-        item = hosts.patch_host(user["id"], host_id, raw)
+        item = await asyncio.to_thread(hosts.patch_host, user["id"], host_id, raw)
     except hosts.HostError as exc:
         return _host_fail(exc)
     if item.get("disabled"):
@@ -189,7 +189,7 @@ async def hosts_delete(request: Request, host_id: int):
         return err
     # Delete first: a connector reconnects at once after the disconnect's
     # bye, and its token must already be dead when it does.
-    if not hosts.delete_host(user["id"], host_id):
+    if not await asyncio.to_thread(hosts.delete_host, user["id"], host_id):
         raise HTTPException(404, "host not found")
     try:
         from .. import terminal
@@ -355,19 +355,19 @@ async def hosts_test(request: Request, host_id: int):
         return err
     if not limiter.allow(f"ssh-test:{user['id']}", 6, 60):
         raise HTTPException(429, "Too many test attempts")
-    row = hosts.get_host(user["id"], host_id)
+    row = await asyncio.to_thread(hosts.get_host, user["id"], host_id)
     if row and row.get("auth_type") == "agent":
         from .. import agent_hub
         try:
             data = await agent_hub.call(user["id"], host_id, "exec", {"cwd": "~", "cmd": "echo ok", "timeout_ms": 10000}, 12)
         except hosts.HostError as exc:
-            hosts.set_host_status(user["id"], host_id, ok=False, error=exc.detail)
+            await asyncio.to_thread(hosts.set_host_status, user["id"], host_id, ok=False, error=exc.detail)
             return _host_fail(exc)
         if not data.get("ok") or data.get("exit") != 0 or "ok" not in (data.get("out") or "").lower():
-            hosts.set_host_status(user["id"], host_id, ok=False, error="connector test failed")
+            await asyncio.to_thread(hosts.set_host_status, user["id"], host_id, ok=False, error="connector test failed")
             return _host_fail(hosts.HostError("connector test failed"))
-        hosts.set_host_status(user["id"], host_id, ok=True)
-        live = hosts.get_host(user["id"], host_id) or row
+        await asyncio.to_thread(hosts.set_host_status, user["id"], host_id, ok=True)
+        live = await asyncio.to_thread(hosts.get_host, user["id"], host_id) or row
         return JSONResponse({"ok": True, "online": True, "agent_version": live.get("agent_version") or "", "host": live})
     from .. import ssh_pool
     try:

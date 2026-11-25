@@ -578,7 +578,7 @@ class RefuselessSource:
             )
             if not picked:
                 if not tried and any(reason == "cooling" for _, reason in why):
-                    last = explain_empty("refuseless", why, model=upstream)
+                    last = explain_empty("refuseless", why, model=upstream, user_id=user_id)
                 if attempts and last.credential_id == attempts[-1].get("credential_id"):
                     attempts.pop()
                 last.attempts = attempts
@@ -661,6 +661,6 @@ class RefuselessSource:
                         store_billing(cid, parse_credits({"available": 0}))
                     note_failure(cid, cooldown_seconds=5, affinity_safe=True)
 
-        result = ChatResult(status=200, stream=UsageStream(run(), collected, on_close=lambda: release(cid)), credential_id=cid, model=model)
+        result = ChatResult(status=200, stream=UsageStream(run(), collected, on_close=lambda: release(cid), cleanup=(stream.aclose,)), credential_id=cid, model=model)
         result.attempts = attempts
         return result

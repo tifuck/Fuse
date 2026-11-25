@@ -1435,6 +1435,12 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     and send.get("parallel_tool_calls") is not None
                     and re.search(r"parallel_tool", msg or "", re.I)
                 ):
+                    await asyncio.to_thread(
+                        api._safe_record_usage,
+                        _user["id"], src.source_id, result.credential_id, upstream,
+                        result.usage, key_id=_user.get("key_id"), provider=src.type_id,
+                        requested_model=requested, request_status="failed", count_request=False,
+                    )
                     current.pop("parallel_tool_calls", None)
                     retried_parallel = True
                     continue
@@ -1445,6 +1451,12 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     and "tool_choice" in send
                     and re.search(r"tool_choice", msg or "", re.I)
                 ):
+                    await asyncio.to_thread(
+                        api._safe_record_usage,
+                        _user["id"], src.source_id, result.credential_id, upstream,
+                        result.usage, key_id=_user.get("key_id"), provider=src.type_id,
+                        requested_model=requested, request_status="failed", count_request=False,
+                    )
                     current.pop("tool_choice", None)
                     retried_none = True
                     continue
@@ -1493,6 +1505,12 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     force = True
                     continue
                 if force:
+                    await asyncio.to_thread(
+                        api._safe_record_usage,
+                        _user["id"], src.source_id, result.credential_id, upstream,
+                        result.usage, key_id=_user.get("key_id"), provider=src.type_id,
+                        requested_model=requested, request_status="failed", count_request=True,
+                    )
                     yield _sse(
                         {
                             "fuse": {

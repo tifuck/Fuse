@@ -48,7 +48,7 @@ async def explabs_add(request: Request, api_key: str = Form(""), label: str = Fo
     if not limiter.allow(f"explabs-add:{user['id']}", 5, 60):
         _pool_flash[user["id"]] = ("err", "Too many attempts. Try again in a minute.", "explabs")
         return RedirectResponse("/sources", status_code=303)
-    sid = explabs_mod.ensure_explabs_source()
+    sid = await asyncio.to_thread(explabs_mod.ensure_explabs_source)
     cred_id, err = await explabs_mod.add_user_key(sid, api_key, user["id"], label=label)
     if err or not cred_id:
         _pool_flash[user["id"]] = ("err", err or "Could not add that key.", "explabs")
@@ -63,13 +63,13 @@ async def explabs_revoke(request: Request, cred_id: int):
     user, redir = await asyncio.to_thread(require_user, request)
     if redir:
         return redir
-    sid = explabs_mod.ensure_explabs_source()
-    row = db.fetchone("SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
+    sid = await asyncio.to_thread(explabs_mod.ensure_explabs_source)
+    row = await asyncio.to_thread(db.fetchone, "SELECT id, donated_by, source_id FROM credentials WHERE id=?", (cred_id,))
     if not row or row["source_id"] != sid:
         raise HTTPException(404, "Not found")
     if row["donated_by"] != user["id"] and not user["is_admin"]:
         raise HTTPException(403, "Forbidden")
-    explabs_mod.disable_credential(cred_id)
+    await asyncio.to_thread(explabs_mod.disable_credential, cred_id)
     invalidate_model_cache("explabs")
     _pool_flash[user["id"]] = ("ok", "Experiential Labs key removed.", "explabs")
     return RedirectResponse("/sources", status_code=303)
@@ -80,9 +80,9 @@ async def admin_explabs_save(request: Request, enabled: str = Form("0")):
     user, redir = await asyncio.to_thread(require_admin, request)
     if redir:
         return redir
-    sid = explabs_mod.ensure_explabs_source()
+    sid = await asyncio.to_thread(explabs_mod.ensure_explabs_source)
     on = 1 if enabled in ("1", "on", "true") else 0
-    db.execute("UPDATE sources SET enabled=? WHERE id=?", (on, sid))
+    await asyncio.to_thread(db.execute, "UPDATE sources SET enabled=? WHERE id=?", (on, sid))
     invalidate_model_cache("explabs")
     _notices[user["id"]] = "Experiential Labs settings saved."
     return RedirectResponse("/admin/sources", status_code=303)

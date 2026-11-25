@@ -8,8 +8,9 @@ tools of its own: the parent runs every call as a real tool job. It starts
 with an empty environment; once V8 is loaded it leaves the network (a new
 network namespace), sets no_new_privs and gives up root, and once its
 isolate exists it may not start a process or thread, before it runs the code.
-Without root the namespace and the uid change are skipped: the server then
-shares its own uid with the worker.
+If any of that fails, or the server is not root (no uid to drop to), it runs
+nothing and answers SANDBOX_FAILED, unless the parent set FUSE_CODE_UNCONFINED
+(app/code_mode.py UNCONFINED).
 """
 from __future__ import annotations
 
@@ -40,6 +41,7 @@ LOG_CHARS = 10_000
 # CPU seconds; time spent awaiting helpers costs none.
 CPU_SECONDS = 120
 _FIX = "Fix the code and call run_code again."
+SANDBOX_FAILED = "run_code unavailable: sandbox could not be set up"
 
 PRELUDE = r"""
 const __call = globalThis.__fuse_call;
@@ -91,15 +93,22 @@ def _write(obj) -> None:
     sys.stdout.buffer.flush()
 
 
-def _confine() -> None:
+def _confine() -> bool:
+    """True once the worker is off the network, cannot gain privileges and no
+    longer holds the server's uid. Fails closed."""
     libc = ctypes.CDLL(None, use_errno=True)
-    if os.getuid() == 0:
-        libc.unshare(0x40000000)  # CLONE_NEWNET; refused without CAP_SYS_ADMIN (some containers)
-    libc.prctl(38, 1, 0, 0, 0)  # PR_SET_NO_NEW_PRIVS
-    if os.getuid() == 0:
-        os.setgroups([])
-        os.setgid(65534)
-        os.setuid(65534)
+    root = os.getuid() == 0
+    if root and libc.unshare(0x40000000) != 0:  # CLONE_NEWNET; refused without CAP_SYS_ADMIN (some containers)
+        return False
+    if libc.prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
+        return False
+    if not root:
+        # No uid to drop to: the code would run as the server, on its network.
+        return os.environ.get("FUSE_CODE_UNCONFINED") == "1"
+    os.setgroups([])
+    os.setgid(65534)
+    os.setuid(65534)
+    return os.getuid() == 65534 and os.geteuid() == 65534
 
 
 def _clip(outcome: dict) -> dict:
@@ -126,7 +135,9 @@ async def _main() -> None:
     from py_mini_racer import JSEvalException, init_mini_racer, mini_racer
 
     init_mini_racer(flags=("--single-threaded", "--jitless"))
-    _confine()
+    if not _confine():
+        _write({"done": {"ok": False, "error": SANDBOX_FAILED, "logs": ""}})
+        return
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader(limit=REPLY_LIMIT)
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)

@@ -7,11 +7,26 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, unquote
 from uuid import uuid4
 
 from app.config import settings
+
+
+# A partial this old belongs to a dump that was killed (its finally never ran).
+PARTIAL_MAX_AGE = 86400
+
+
+def sweep_partials(root: Path, now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    for stale in root.glob("fuse-mariadb-*.sql.partial"):
+        try:
+            if now - stale.stat().st_mtime > PARTIAL_MAX_AGE:
+                stale.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def backup(directory):
@@ -65,6 +80,7 @@ def backup(directory):
     for old in sorted(root.glob("fuse-mariadb-*.sql.gz"), reverse=True)[retain:]:
         old.unlink(missing_ok=True)
         old.with_suffix(old.suffix + ".sha256").unlink(missing_ok=True)
+    sweep_partials(root)
     print(target)
     return target
 

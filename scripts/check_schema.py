@@ -166,15 +166,30 @@ def live_constraints(url):
     return actual
 
 
+class ApplyError(Exception):
+    pass
+
+
 def apply(url, statements):
+    import pymysql
+
+    creates = [sql for sql in statements if sql.startswith("CREATE TABLE ")]
+    alters = [sql for sql in statements if not sql.startswith("CREATE TABLE ")]
     conn = _connect(url)
     try:
         with conn.cursor() as cur:
             # New tables can reference each other; schema.sql loads the same way.
+            # They are empty, so nothing goes unchecked.
             cur.execute("SET FOREIGN_KEY_CHECKS=0")
-            for sql in statements:
+            for sql in creates:
                 cur.execute(sql)
+            # A foreign key added to an existing table must hold for its rows.
             cur.execute("SET FOREIGN_KEY_CHECKS=1")
+            for sql in alters:
+                try:
+                    cur.execute(sql)
+                except (pymysql.IntegrityError, pymysql.OperationalError) as exc:
+                    raise ApplyError(f"{sql.splitlines()[0]}\n    failed: {exc}") from exc
         conn.commit()
     finally:
         conn.close()
@@ -211,7 +226,13 @@ def main(argv=None):
             print(f"check_schema: adding to {schema!r}:")
             for sql in statements:
                 print("  " + sql.splitlines()[0] + (" ..." if "\n" in sql else ""))
-            apply(url, statements)
+            try:
+                apply(url, statements)
+            except ApplyError as exc:
+                print(f"check_schema: could not add to {schema!r}:\n  {exc}\nA foreign key fails when rows"
+                      " reference a parent that is gone: delete those rows (or run the migration that does),"
+                      " then rerun.", file=sys.stderr)
+                return 1
             columns, keys, constraints = live_columns(url), live_keys(url), live_constraints(url)
     gone = missing({table: spec["columns"] for table, spec in expected.items()}, columns)
     gone += missing_keys(expected, columns, keys, constraints)

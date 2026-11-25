@@ -10,6 +10,7 @@ import math
 import re
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from urllib.parse import urljoin, urlparse
 
@@ -33,6 +34,7 @@ from .extract import (
     FETCH_MAX_BYTES,
     PDF_MAX_BYTES,
     PageExtract,
+    PageTooComplex,
     extract_page,
     find_windows,
     select_passages,
@@ -163,6 +165,11 @@ _page_cache = TtlLru(
 )
 _blocked_hosts = TtlLru(512)
 _search_sem = asyncio.Semaphore(SEARCH_CONCURRENCY)
+# A query through a user's own connector can stall until QUERY_DEADLINE (the
+# user controls that machine); each user gets only a few of the global slots
+# for those. Entries live only while a query holds or waits for one.
+CONNECTOR_SEARCH_CONCURRENCY = 3
+_connector_sems: dict[int, tuple[asyncio.Semaphore, list[int]]] = {}
 _wiki = WikipediaProvider()
 _ddg = DdgProvider()
 _bing = BingProvider()
@@ -171,6 +178,39 @@ _hn = HnProvider()
 _quotes = QuotesProvider()
 MAX_HITS_MERGED = 8
 PAGE_CACHE_TTL = 900.0
+
+
+# Page extraction holds the GIL for its whole run; its own small pool keeps a
+# burst of large pages from taking the default executor the database calls
+# share, and the deadline bounds how long a read waits on it.
+PARSE_WORKERS = 2
+PARSE_DEADLINE = 15.0
+_parse_pool = ThreadPoolExecutor(max_workers=PARSE_WORKERS, thread_name_prefix="fuse-page-parse")
+
+
+async def _parse_off_loop(*args) -> PageExtract:
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(loop.run_in_executor(_parse_pool, _parse_page, *args), PARSE_DEADLINE)
+    except TimeoutError:
+        raise PageTooComplex(f"The page is too complex to read (extraction took over {int(PARSE_DEADLINE)}s).") from None
+
+
+@contextlib.asynccontextmanager
+async def _search_slot(user_id: int):
+    if egress.current() is None:
+        async with _search_sem:
+            yield
+        return
+    sem, users = _connector_sems.setdefault(user_id, (asyncio.Semaphore(CONNECTOR_SEARCH_CONCURRENCY), [0]))
+    users[0] += 1
+    try:
+        async with sem, _search_sem:
+            yield
+    finally:
+        users[0] -= 1
+        if not users[0]:
+            _connector_sems.pop(user_id, None)
 
 
 def _parse_page(
@@ -596,7 +636,7 @@ async def _query(
     last_timeout: httpx.Timeout | None = None
     failures: list[str] = []
     try:
-        async with _search_sem:
+        async with _search_slot(user_id):
             if cancel and cancel.is_set():
                 raise asyncio.CancelledError
 
@@ -1113,10 +1153,13 @@ async def _fetch(
     host = host_of(clean)
     try:
         final_url, ctype, body, truncated, received = await _fetch_document(clean, cancel)
-        base_extract = await asyncio.to_thread(_parse_page, body, ctype, final_url, truncated, received)
+        base_extract = await _parse_off_loop(body, ctype, final_url, truncated, received)
         del body
     except asyncio.CancelledError:
         raise
+    except PageTooComplex as exc:
+        msg = str(exc)
+        return None, msg, msg
     except FetchError as exc:
         if exc.blocked:
             _blocked_hosts.set(scope + host, True, BLOCKED_HOST_TTL)

@@ -174,16 +174,18 @@ def envelope_receipts(envelopes: list[str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for text in envelopes or []:
-        chunk = str(text)[:8000]
-        for job_id, seq in EVENT_ID_RE.findall(chunk):
-            ident = event_receipt_id(job_id, int(seq))
-            if ident not in seen:
-                seen.add(ident)
-                out.append(ident)
-        for job_id in RESULT_ID_RE.findall(chunk):
-            if job_id not in seen:
-                seen.add(job_id)
-                out.append(job_id)
+        # Only the envelope's own opening tag: its body is remote output or
+        # model text, and a tag quoted there must not acknowledge any job.
+        chunk = str(text)
+        event = EVENT_ID_RE.match(chunk)
+        result = None if event else RESULT_ID_RE.match(chunk)
+        if event:
+            ident = event_receipt_id(event.group(1), int(event.group(2)))
+        else:
+            ident = result.group(1) if result else ""
+        if ident and ident not in seen:
+            seen.add(ident)
+            out.append(ident)
     return out
 
 

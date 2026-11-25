@@ -399,6 +399,21 @@ function bareUrlAt(src, at) {
   return /^(?:https?:\/\/|mailto:)./i.test(href) ? { href, end: at + href.length } : null;
 }
 
+// Whether a link's text names another site than its href opens: the text
+// reads as a URL or bare host (`https://github.com/x`, `github.com`) whose
+// host differs. Hosts compare without "www.".
+export function linkMisleads(label, href) {
+  const m = String(label || "").trim().match(/^(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})\.?(?::\d+)?(?:[/?#]\S*)?$/i);
+  if (!m) return false;
+  // A bare file name (`README.md`, `main.py`) reads like a host; only a
+  // scheme makes those count.
+  if (!/^https?:\/\//i.test(String(label).trim()) && /\.(?:md|py|js|ts|json|sh|txt|html|css|go|rs|c|h|yml|yaml|toml|lock|log|sql|zip)$/i.test(m[1])) return false;
+  let host;
+  try { host = new URL(href).hostname; } catch (_) { return false; }
+  const bare = (h) => h.toLowerCase().replace(/^www\./, "");
+  return bare(m[1]) !== bare(host);
+}
+
 function pushText(items, text, s, e) {
   const last = items[items.length - 1];
   if (last && last.t === "text") {

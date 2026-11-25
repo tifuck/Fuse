@@ -28,7 +28,7 @@ SEND_TIMEOUT = 30
 
 @router.get("/terminal/hosts")
 async def terminal_hosts(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     items = await asyncio.to_thread(terminal.host_list, user["id"])
@@ -37,7 +37,7 @@ async def terminal_hosts(request: Request):
 
 @router.post("/terminal/sessions")
 async def terminal_open(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     raw = await _json_object(request)
@@ -62,7 +62,7 @@ async def terminal_open(request: Request):
 
 @router.get("/terminal/sessions")
 async def terminal_sessions(request: Request):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     return JSONResponse({"sessions": terminal.list_for(user["id"])}, headers={"Cache-Control": "no-store"})
@@ -70,7 +70,7 @@ async def terminal_sessions(request: Request):
 
 @router.delete("/terminal/sessions/{session_id}")
 async def terminal_close(request: Request, session_id: str):
-    user, err = _chat_auth(request)
+    user, err = await asyncio.to_thread(_chat_auth, request)
     if err:
         return err
     if not await terminal.close_where(user["id"], "closed", session_id=session_id):
