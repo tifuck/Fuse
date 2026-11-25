@@ -680,7 +680,9 @@ async def spawn(
         task = await chat_runs.start(request, user, child)
     except Exception as exc:
         logger.exception("Subagent start failed for %s", child["id"])
-        err = str(exc).strip()[:400] or "Subagent could not start"
+        # Only a user-facing detail reaches the model and the transcript; the
+        # rest (driver, SQL, bugs) stays in the log above.
+        err = str(getattr(exc, "detail", None) or "").strip()[:400] or "Subagent could not start"
         await durable_call(chat_store.abort_active, child["id"], "failed", err)
         if not resume_from:  # a resume never counted against spawns_used
             await durable_call(chat_store.refund_spawn, parent_run_id)

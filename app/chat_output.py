@@ -657,11 +657,11 @@ class Output:
         self._append_content(content, pending, clean)
         self._ensure_aggregates()
         if max(len(msg["content"]), len(msg["reasoning"])) > chats.ASSISTANT_CONTENT_MAX:
-            raise ValueError(f"Generation output safety limit reached ({chats.ASSISTANT_CONTENT_MAX:,} characters per reply field). Start a new turn to continue; this is separate from model context compaction.")
+            raise chats.ChatValidationError(f"Generation output safety limit reached ({chats.ASSISTANT_CONTENT_MAX:,} characters per reply field). Start a new turn to continue; this is separate from model context compaction.")
         if isinstance(obj.get("usage"), dict):
             chats._validate_json_value(obj["usage"], "usage")
             if len(json.dumps(obj["usage"], ensure_ascii=True, separators=(",", ":"))) > chats.USAGE_MAX:
-                raise ValueError("Generation usage limit reached.")
+                raise chats.ChatValidationError("Generation usage limit reached.")
             before = msg["usage"].get("gen_ms") if isinstance(msg.get("usage"), dict) else None
             msg["usage"] = obj["usage"]
             if obj["usage"].get("gen_ms") != before:

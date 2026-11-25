@@ -113,7 +113,8 @@ def test_a_failed_worker_start_fails_the_child_and_refunds_the_spawn(fresh_db):
     with patch.object(chat_runs, "start", new=AsyncMock(side_effect=RuntimeError("worker boom"))):
         text, trace = run_async(agents.spawn(user={"id": uid}, request=None, parent_run_id=parent["id"],
                                              thread_id=thread["id"], arguments='{"prompt":"p","description":"d"}'))
-    assert trace["status"] == "error" and "worker boom" in text
+    # The internal error stays in the log; the model and transcript get a generic one.
+    assert trace["status"] == "error" and text == "Subagent could not start"
     assert chat_store.get_run(uid, trace["child_id"])["status"] == "failed"
     assert int(chat_store.get_run(uid, parent["id"])["request"]["agent"].get("spawns_used") or 0) == 0
 

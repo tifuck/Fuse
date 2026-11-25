@@ -343,6 +343,25 @@ def test_a_failed_wake_turn_acknowledges_only_reports_it_delivered(fresh_db):
     assert not agent_b.get("wake_sent") and agent_b["wake_attempts"] == 1
 
 
+def test_a_wake_turn_that_fails_to_start_spends_an_attempt_unless_it_raced_a_run(fresh_db):
+    from unittest.mock import patch
+
+    uid = coding_user()
+    thread, parent = parent_and_thread(uid)
+    bg = child(uid, thread, parent, background=True)
+    chat_store.finish_run(bg["id"], {"content": "report"}, "completed")
+    chat_store.finish_run(parent["id"], {"content": "ok"}, "completed")
+    pk = parent["thread_id"]
+
+    busy = chats.ChatValidationError("chat already has an active run", 409)
+    with patch.object(chat_store, "start_turn", side_effect=busy):
+        run_async(chat_runs._wake_parent(uid, pk))
+    assert int(agent_of(uid, bg["id"]).get("wake_attempts") or 0) == 0
+    with patch.object(chat_store, "start_turn", side_effect=RuntimeError("database gone")):
+        run_async(chat_runs._wake_parent(uid, pk))
+    assert agent_of(uid, bg["id"])["wake_attempts"] == 1
+
+
 def test_a_report_stops_waking_after_two_failed_attempts(fresh_db):
     from unittest.mock import patch
 

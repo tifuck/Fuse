@@ -19,6 +19,7 @@ from fastapi import Request
 
 from . import chat_queue, chat_runtime, chat_store, chats, db
 from .async_work import durable_call
+from .chat_generation.tool_runner import CheckpointFailed
 from .chat_output import Output
 
 FLUSH_SECONDS = 0.2
@@ -50,6 +51,9 @@ _stopping = False
 _unsettled: dict[str, tuple[dict, str, int]] = {}
 UNSETTLED_REAP_ATTEMPTS = 5
 _FINISH_BACKOFF = (0.0, 0.5, 2.0)
+UNREADABLE_RUN_NOTICE = "This run's saved state is unreadable, so it could not start."
+# Strong references to fire-and-forget pushes: the loop keeps only weak ones.
+_push_tasks: set[asyncio.Task] = set()
 
 
 def _register_cancel_signal(ident: str):
@@ -767,13 +771,18 @@ async def _wake_parent(user_id: int, thread_id) -> None:
             )
         except chats.ChatValidationError as exc:
             logger.exception("Wake turn failed for thread %s", thread_id)
-            # 413 is the message cap — deterministic, so count it. 409/429
-            # are capacity races; leave attempts so sweep_wakes can retry.
-            if int(getattr(exc, "status_code", 0) or 0) == 413:
+            # Capacity races (429, the 409s in _RETRY_CONFLICTS) clear on
+            # their own; leave attempts so sweep_wakes can retry. Anything
+            # else (the 413 message cap, a lost image) fails every time.
+            status = int(getattr(exc, "status_code", 0) or 0)
+            if not (status == 429 or (status == 409 and exc.detail in _RETRY_CONFLICTS)):
                 await durable_call(chat_store.bump_wake_attempts, ids)
             return
         except Exception:
             logger.exception("Wake turn failed for thread %s", thread_id)
+            # Counted too: sweep_wakes retries every minute, and an
+            # uncounted failure would retry forever.
+            await durable_call(chat_store.bump_wake_attempts, ids)
             return
         run = result.get("run")
         if run is None:
@@ -1112,7 +1121,7 @@ async def _run(request, user, run):
                 while b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
                     if len(line) > MAX_FRAME_BYTES:
-                        raise ValueError("Generation frame limit reached.")
+                        raise chats.ChatValidationError("Generation frame limit reached.")
                     line = line.strip()
                     if not line.startswith(b"data:"):
                         continue
@@ -1128,7 +1137,7 @@ async def _run(request, user, run):
                         logger.warning("Skipping malformed generation frame for %s", ident)
                         continue
                     if not isinstance(obj, dict):
-                        raise ValueError("Invalid generation frame.")
+                        raise chats.ChatValidationError("Invalid generation frame.")
                     delivery = obj.get("fuse")
                     if isinstance(delivery, dict) and delivery.get("event") == "steer.delivered":
                         await flush()
@@ -1164,9 +1173,9 @@ async def _run(request, user, run):
                 if done:
                     break
                 if len(buf) > MAX_FRAME_BYTES:
-                    raise ValueError("Generation frame limit reached.")
+                    raise chats.ChatValidationError("Generation frame limit reached.")
             if not done:
-                raise ValueError("Generation stream ended without [DONE].")
+                raise chats.ChatValidationError("Generation stream ended without [DONE].")
             output.settle_tool_xml()
             if (
                 not output.message.get("content")
@@ -1199,9 +1208,9 @@ async def _run(request, user, run):
     except Exception as exc:
         if isinstance(exc, TimeoutError):
             error = "Generation exceeded its time limit."
-        elif getattr(exc, "detail", None) or isinstance(exc, ValueError):
-            # HTTP/validation details and Fuse's own ValueErrors are written
-            # for the user. Anything else (driver, OS, bugs) stays in the log.
+        elif getattr(exc, "detail", None) or isinstance(exc, CheckpointFailed):
+            # HTTP/validation details and a failed checkpoint are written for
+            # the user. Anything else (driver, OS, SQL, bugs) stays in the log.
             error = str(getattr(exc, "detail", None) or exc)
         else:
             logger.exception("Chat run %s failed", ident)
@@ -1393,7 +1402,7 @@ async def _run(request, user, run):
                         from . import push
 
                         if status == "failed" or await asyncio.to_thread(_thread_settled, user["id"], run["thread_id"]):
-                            asyncio.create_task(
+                            push_task = asyncio.create_task(
                                 push.notify_run_done(
                                     user["id"],
                                     run["thread_id"],
@@ -1412,6 +1421,8 @@ async def _run(request, user, run):
                                     error=output.message.get("error") or "",
                                 )
                             )
+                            _push_tasks.add(push_task)
+                            push_task.add_done_callback(_push_tasks.discard)
                     except Exception:
                         logger.exception("Chat push failed to schedule for %s", ident)
                 if status in ("completed", "failed") and parent and run.get("thread_id") and not _stopping:
@@ -1530,17 +1541,26 @@ async def resume_queued(user_id=None):
     for row in rows:
         if _owns_run(_tasks.get(row["id"])):
             continue
-        if row["user_id"] not in owners:
-            owners[row["user_id"]] = await asyncio.to_thread(accounts.get_user, row["user_id"])
-        owner = owners[row["user_id"]]
-        if owner is None:
-            continue
-        # Queued runs about to launch need their full request; fetch it only
-        # now so the periodic scan does not ship every blob every 60 s.
-        run = await asyncio.to_thread(chat_store.get_run, row["user_id"], row["id"], transcript=False)
-        if run is None:
-            continue
-        await start(internal_request(run["user_id"]), dict(owner), run)
+        # One bad row must not hold back the rest of the queue (or, at boot,
+        # startup itself); it is retried on the next tick.
+        try:
+            if row["user_id"] not in owners:
+                owners[row["user_id"]] = await asyncio.to_thread(accounts.get_user, row["user_id"])
+            owner = owners[row["user_id"]]
+            if owner is None:
+                continue
+            # Queued runs about to launch need their full request; fetch it only
+            # now so the periodic scan does not ship every blob every 60 s.
+            run = await asyncio.to_thread(chat_store.get_run, row["user_id"], row["id"], transcript=False)
+            if run is None:
+                # Gone since the scan, or its stored JSON is unreadable. An
+                # unreadable row can never start, and left queued it holds the
+                # thread and a run slot forever: end it (a gone row is a no-op).
+                await durable_call(chat_store.abort_active, row["id"], "failed", UNREADABLE_RUN_NOTICE)
+                continue
+            await start(internal_request(run["user_id"]), dict(owner), run)
+        except Exception:
+            logger.exception("Failed to resume queued chat run %s", row["id"])
 
 
 async def stop():

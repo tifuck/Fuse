@@ -98,6 +98,48 @@ def test_a_never_started_turn_stays_queued_and_then_runs(fresh_db):
     assert run_row(run["id"])["status"] == "completed"
 
 
+def test_an_unreadable_queued_run_fails_and_frees_its_thread_while_the_rest_start(fresh_db):
+    uid = quick_user()
+    bad_thread, bad = _crashed_run(uid, status="queued")
+    db.execute("UPDATE chat_runs SET request=? WHERE id=?", ("{not json", bad["id"]))
+    _, good = _crashed_run(uid, status="queued", text="next")
+
+    async def boot():
+        await chat_runs.resume_queued(uid)
+        await settle()
+
+    with fake_provider(text_frames("hi there")):
+        run_async(boot())
+    assert run_row(bad["id"])["status"] == "failed"
+    assert run_row(good["id"])["status"] == "completed"
+    reply = chats.get_thread(uid, bad_thread["id"])["messages"][-1]
+    assert reply["error"] == chat_runs.UNREADABLE_RUN_NOTICE
+    # The thread is free again: a new turn is accepted.
+    rev = chats.get_thread(uid, bad_thread["id"])["revision"]
+    assert chat_store.start_turn(uid, bad_thread["id"], "again", rev, None)["run"]["status"] == "queued"
+
+
+def test_one_queued_run_failing_to_start_does_not_hold_back_the_others(fresh_db):
+    uid = quick_user()
+    _, first = _crashed_run(uid, status="queued")
+    _, second = _crashed_run(uid, status="queued", text="next")
+    real = chat_runs.start
+
+    async def flaky(request, user, run, **kwargs):
+        if run["id"] == first["id"]:
+            raise RuntimeError("worker boom")
+        return await real(request, user, run, **kwargs)
+
+    async def boot():
+        await chat_runs.resume_queued(uid)
+        await settle()
+
+    with fake_provider(text_frames("hi there")), patch.object(chat_runs, "start", new=flaky):
+        run_async(boot())
+    assert run_row(first["id"])["status"] == "queued", "retried on the next tick"
+    assert run_row(second["id"])["status"] == "completed"
+
+
 def test_missing_tool_results_are_sealed_and_the_resume_note_is_added_once(fresh_db):
     uid = quick_user()
     call = {"id": "c9", "type": "function", "function": {"name": "web_search", "arguments": "{}"}}

@@ -1,10 +1,13 @@
 """Provider failures mid-turn: transient ones re-run the same step (no
 duplicated text, no error on the reply), definitive ones fail the turn at
 once, and the retry budget is bounded."""
+from unittest.mock import patch
+
 import httpx
 from fastapi import HTTPException
 
 from app import chat_runtime, chats
+from app.chat_generation.tool_runner import CheckpointFailed
 from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, tool_call_frames
 
 from ._support import fake_tools, no_backoff, split_frames, status_provider, tool_thread
@@ -84,6 +87,25 @@ def test_midstream_drop_resumes_from_the_shown_text_without_repeating_it(fresh_d
     reply = _reply(uid, thread_id)
     assert reply["content"] == "The answer is 42."
     assert not reply.get("error")
+
+
+def test_a_malformed_frame_is_retried_but_a_fuse_error_is_not(fresh_db):
+    uid = quick_user()
+    # A parser's ValueError for a malformed upstream frame is the provider's.
+    with no_backoff(), fake_provider(
+        _dies_after("The answer is ", ValueError("upstream sent malformed SSE JSON")), text_frames("42."),
+    ) as provider:
+        _, run = run_async(run_turn(uid, "what is it?"))
+    assert run["status"] == "completed" and len(provider.bodies) == 2
+
+    # Fuse's own ValueErrors while processing the reply are local faults,
+    # never a paid retry.
+    for exc in (chats.ChatValidationError("internal check"), CheckpointFailed("could not save")):
+        with no_backoff(), fake_provider(text_frames("42."), text_frames("42.")) as provider, \
+                patch.object(chat_runtime, "usage_from_obj", side_effect=exc):
+            _, run = run_async(run_turn(uid, "what is it?"))
+        assert len(provider.bodies) == 1, type(exc).__name__
+        assert run["status"] == "failed"
 
 
 def test_midstream_drop_inside_a_think_block_keeps_the_reasoning_out_of_the_reply(fresh_db):
