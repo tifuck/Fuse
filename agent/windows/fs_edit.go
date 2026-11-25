@@ -42,6 +42,11 @@ func writeFileAtomicLimit(path, content string, max int) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
+	inDir, unpin, err := pinDir(dir)
+	if err != nil {
+		return err
+	}
+	defer unpin()
 	tmp, err := os.CreateTemp(dir, ".fuse-*.tmp")
 	if err != nil {
 		// Directory not writable but the file is: rewrite the file itself.
@@ -51,6 +56,11 @@ func writeFileAtomicLimit(path, content string, max int) error {
 		return err
 	}
 	tmpName := tmp.Name()
+	if err := inDir(tmp); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
 	if err := tmp.Chmod(mode); err != nil && runtime.GOOS != "windows" {
 		tmp.Close()
 		os.Remove(tmpName)

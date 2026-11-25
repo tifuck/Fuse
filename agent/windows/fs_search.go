@@ -357,6 +357,21 @@ func grepDirSearch(root, pattern, include string, maxMatches int, opt grepOpts) 
 	return out, false, err
 }
 
+// searchMaxColumns caps each printed line, as rg --max-columns does on Linux:
+// the output cap is checked per line, so one huge line grew it unbounded.
+const searchMaxColumns = 1000
+
+func clipSearchLine(s string) string {
+	if len(s) <= searchMaxColumns {
+		return s
+	}
+	cut := searchMaxColumns
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + " [line truncated]"
+}
+
 func grepDirWalk(root, pattern, include string, maxMatches int, opt grepOpts) (string, error) {
 	if pattern == "" || len(pattern) > 2000 {
 		return "", fmt.Errorf("invalid pattern or path")
@@ -512,7 +527,7 @@ func grepDirWalk(root, pattern, include string, maxMatches int, opt grepOpts) (s
 					hi = k - 1
 					break
 				}
-				fmt.Fprintf(&b, "%s%s%d%s%s\n", p, sep, k+1, sep, strings.TrimSuffix(lines[k], "\r"))
+				fmt.Fprintf(&b, "%s%s%d%s%s\n", p, sep, k+1, sep, clipSearchLine(strings.TrimSuffix(lines[k], "\r")))
 				lastPrinted = k
 			}
 			n++

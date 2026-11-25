@@ -1,5 +1,6 @@
 /* Fuse connector: write-side filesystem ops (atomic writes, exact edits). */
 #include <fcntl.h>
+#include <sys/random.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -60,10 +61,10 @@ static char *read_all_fd(int fd, size_t *len) {
  * bytes are kept so a failed write (ENOSPC, EIO) puts them back instead of
  * leaving the file truncated. A readable file whose copy cannot be taken is
  * not rewritten. */
-static int write_in_place(const char *path, const char *content, size_t n) {
+static int write_in_place(int dfd, const char *name, const char *content, size_t n) {
     char *orig = NULL;
     size_t olen = 0;
-    int fd = open(path, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
+    int fd = openat(dfd, name, O_RDWR | O_NOFOLLOW | O_CLOEXEC);
     if (fd >= 0) {
         errno = 0;
         orig = read_all_fd(fd, &olen);
@@ -74,7 +75,7 @@ static int write_in_place(const char *path, const char *content, size_t n) {
             return -1;
         }
     } else {
-        fd = open(path, O_WRONLY | O_NOFOLLOW | O_CLOEXEC); /* write-only: no copy */
+        fd = openat(dfd, name, O_WRONLY | O_NOFOLLOW | O_CLOEXEC); /* write-only: no copy */
     }
     if (fd < 0) return -1;
     if (lseek(fd, 0, SEEK_SET) < 0) {
@@ -115,14 +116,33 @@ static int mkdir_parents(const char *dir) {
     return 0;
 }
 
+/* mkstemp in an open directory: a fresh .fuse-XXXXXX created O_EXCL there. */
+static int temp_at(int dfd, char *name, size_t cap) {
+    static const char set[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    for (int tries = 0; tries < 100; tries++) {
+        unsigned char r[6];
+        if (getrandom(r, sizeof(r), 0) != (ssize_t)sizeof(r)) return -1;
+        snprintf(name, cap, ".fuse-%c%c%c%c%c%c", set[r[0] % 62], set[r[1] % 62], set[r[2] % 62],
+                 set[r[3] % 62], set[r[4] % 62], set[r[5] % 62]);
+        int fd = openat(dfd, name, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (fd >= 0 || errno != EEXIST) return fd;
+    }
+    return -1;
+}
+
 int write_file_atomic_limit(const char *path, const char *content, long max) {
     if (content && (long)strlen(content) > max) { errno = EFBIG; return -1; }
     char expanded[PATH_MAX];
     if (expand_home(path, expanded, sizeof(expanded)) != 0) return -1;
     path = expanded;
-    char tmp[PATH_MAX];
+    char tmp[32];
     char dir[PATH_MAX];
     const char *slash = strrchr(path, '/');
+    const char *base = slash ? slash + 1 : path;
+    if (!base[0]) {
+        errno = EINVAL;
+        return -1;
+    }
     if (slash) {
         size_t n = (size_t)(slash - path);
         if (n >= sizeof(dir)) return -1;
@@ -138,32 +158,43 @@ int write_file_atomic_limit(const char *path, const char *content, long max) {
     /* New files get what any editor would create (0666 minus the umask), not
      * mkstemp's 0600 that other service users cannot read. */
     mode_t mode = 0666 & ~current_umask();
-    if (lstat(path, &st) == 0) {
+    if (lstat(path, &st) != 0) {
+        if (errno != ENOENT || mkdir_parents(dir) != 0) return -1;
+    }
+    /* Everything below goes through this one open of the parent: the check,
+     * the temp file and the rename all act on the same directory, so a
+     * component swapped for a symlink meanwhile (another user's folder under
+     * a root connector) cannot redirect the write. */
+    int dfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dfd < 0) return -1;
+    int rc = -1;
+    if (fstatat(dfd, base, &st, AT_SYMLINK_NOFOLLOW) == 0) {
         if (!S_ISREG(st.st_mode)) {
+            close(dfd);
             errno = EINVAL;
             return -1;
         }
         exists = 1;
         mode = st.st_mode & 0777;
         /* A rename would split a hard-linked file into two copies. */
-        if (st.st_nlink > 1) return write_in_place(path, content ? content : "", n);
+        if (st.st_nlink > 1) {
+            rc = write_in_place(dfd, base, content ? content : "", n);
+            goto out;
+        }
     } else if (errno != ENOENT) {
-        return -1;
-    } else if (mkdir_parents(dir) != 0) {
-        return -1;
+        goto out;
     }
-    if (snprintf(tmp, sizeof(tmp), "%s/.fuse-XXXXXX", dir) >= (int)sizeof(tmp)) return -1;
-    int fd = mkostemp(tmp, O_CLOEXEC);
+    int fd = temp_at(dfd, tmp, sizeof(tmp));
     if (fd < 0) {
         /* Directory not writable but the file is: edit the file itself. */
         if (exists && (errno == EACCES || errno == EPERM))
-            return write_in_place(path, content ? content : "", n);
-        return -1;
+            rc = write_in_place(dfd, base, content ? content : "", n);
+        goto out;
     }
     if (fchmod(fd, mode) != 0) {
         close(fd);
-        unlink(tmp);
-        return -1;
+        unlinkat(dfd, tmp, 0);
+        goto out;
     }
     /* Keep the original owner where permitted (e.g. root editing a user's
      * file); an unprivileged connector cannot, and that is not an error. */
@@ -171,24 +202,25 @@ int write_file_atomic_limit(const char *path, const char *content, long max) {
         if (fchown(fd, st.st_uid, st.st_gid) != 0) { /* not permitted: keep ours */ }
     if (write_all_fd(fd, content ? content : "", n) != 0 || fsync(fd) != 0) {
         close(fd);
-        unlink(tmp);
-        return -1;
+        unlinkat(dfd, tmp, 0);
+        goto out;
     }
     if (close(fd) != 0) {
-        unlink(tmp);
-        return -1;
+        unlinkat(dfd, tmp, 0);
+        goto out;
     }
-    if (rename(tmp, path) != 0) {
-        unlink(tmp);
-        return -1;
+    if (renameat(dfd, tmp, dfd, base) != 0) {
+        unlinkat(dfd, tmp, 0);
+        goto out;
     }
     /* Make the rename itself durable: fsync the parent directory. */
-    int dfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (dfd >= 0) {
-        (void)fsync(dfd);
-        close(dfd);
-    }
-    return 0;
+    (void)fsync(dfd);
+    rc = 0;
+out:;
+    int e = errno;
+    close(dfd);
+    errno = e;
+    return rc;
 }
 
 int write_file_atomic(const char *path, const char *content) {

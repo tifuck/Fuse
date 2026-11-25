@@ -12,18 +12,19 @@ import (
 )
 
 // createSecretFile creates path exclusively with a protected DACL attached at
-// creation: full control for the writing user, the previous config's owner (a
-// SYSTEM rewrite must not lock the tray out), SYSTEM and BuiltinAdministrators,
-// nothing inherited. Mode bits are meaningless on Windows, and hardening after
-// the write leaves a window in which another local user can open the file
-// under C:\ProgramData's inherited Users:(RX) ACL and keep that handle.
+// creation: the writing user, the previous config's owner (a SYSTEM rewrite
+// must not lock the tray out), SYSTEM and BuiltinAdministrators, nothing
+// inherited (access per secretAccess). Mode bits are meaningless on Windows,
+// and hardening after the write leaves a window in which another local user
+// can open the file under C:\ProgramData's inherited Users:(RX) ACL and keep
+// that handle.
 // previous may be "" (fresh install).
 func createSecretFile(path string, previous string) (*os.File, error) {
 	sids := secretSIDs(previous)
 	if len(sids) == 0 {
 		return nil, windows.ERROR_INVALID_SID
 	}
-	dacl, buf, err := buildAllowAllACL(sids, 0)
+	dacl, buf, err := buildSecretACL(sids, isElevated(), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +89,8 @@ func secretSIDs(previous string) []*windows.SID {
 
 // secureSystemDir makes the elevated install's config folder (under
 // C:\ProgramData) belong to Administrators with a protected DACL: SYSTEM,
-// Administrators and the installing user, inherited by what it holds.
+// Administrators and the installing user (read only, see secretAccess),
+// inherited by what it holds.
 // ProgramData lets any local user create a folder, which they then own, and
 // write into subfolders; a folder squatted before the install could later
 // swap agent.conf for one naming the squatter's server, run as SYSTEM. A
@@ -118,7 +120,7 @@ func secureSystemDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	dacl, buf, err := buildAllowAllACL(sids, windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE)
+	dacl, buf, err := buildSecretACL(sids, true, windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE)
 	if err != nil {
 		return err
 	}
@@ -129,10 +131,22 @@ func secureSystemDir(dir string) error {
 	return err
 }
 
-// buildAllowAllACL packs one ACCESS_ALLOWED ACE (GENERIC_ALL) per SID into a
+// secretAccess is one SID's access to the config and its folder. Written by
+// an elevated process (installer, SYSTEM service), the config steers the
+// SYSTEM service, so only SYSTEM and Administrators may change it: an
+// installing user with write access could repoint url= from an unelevated
+// process and bypass UAC. That user (the tray) only reads it.
+func secretAccess(sid *windows.SID, elevated bool) uint32 {
+	if !elevated || sid.IsWellKnown(windows.WinLocalSystemSid) || sid.IsWellKnown(windows.WinBuiltinAdministratorsSid) {
+		return windows.GENERIC_ALL
+	}
+	return windows.GENERIC_READ | windows.GENERIC_EXECUTE
+}
+
+// buildSecretACL packs one ACCESS_ALLOWED ACE (secretAccess) per SID into a
 // single ACL block; SetEntriesInAcl is unexported in x/sys so the layout is
 // written directly (ACE sizes are 8+sidLen, always DWORD-aligned).
-func buildAllowAllACL(sids []*windows.SID, aceFlags uint8) (*windows.ACL, []byte, error) {
+func buildSecretACL(sids []*windows.SID, elevated bool, aceFlags uint8) (*windows.ACL, []byte, error) {
 	size := 8 // ACL header
 	for _, sid := range sids {
 		size += 8 + sid.Len()
@@ -147,7 +161,7 @@ func buildAllowAllACL(sids []*windows.SID, aceFlags uint8) (*windows.ACL, []byte
 		buf[off] = windows.ACCESS_ALLOWED_ACE_TYPE
 		buf[off+1] = aceFlags
 		binary.LittleEndian.PutUint16(buf[off+2:], uint16(8+sidLen))
-		binary.LittleEndian.PutUint32(buf[off+4:], windows.GENERIC_ALL)
+		binary.LittleEndian.PutUint32(buf[off+4:], secretAccess(sid, elevated))
 		copy(buf[off+8:], unsafe.Slice((*byte)(unsafe.Pointer(sid)), sidLen))
 		off += 8 + sidLen
 	}
