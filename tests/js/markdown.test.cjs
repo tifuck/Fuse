@@ -153,4 +153,5 @@ test('a link asks first only when its text names another site than it opens', as
   assert.equal(linkMisleads('https://github.com/x', 'https://github.com/y'), false);
   assert.equal(linkMisleads('github.com', 'https://www.github.com/x'), false, 'www. is the same site');
   assert.equal(linkMisleads('the docs', 'https://evil.example/'), false, 'plain words claim no site');
+  assert.equal(linkMisleads('README.md', 'https://github.com/x/README.md'), false, 'a file name is no host');
 });
