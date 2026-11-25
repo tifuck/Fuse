@@ -155,17 +155,34 @@ func dialAgent(raw string) (*websocket.Conn, error) {
 	return conn, nil
 }
 
+// writeTimeout grows with the frame, so a large one on a slow uplink is not
+// cut and retried forever at the head of the queue: ioTimeoutMS plus
+// writeMinRate for the bytes, at most writeMaxMS for a peer that only
+// trickles.
+const (
+	writeMinRate = 16 << 10 // bytes per second
+	writeMaxMS   = 120000
+)
+
+func writeTimeout(n int) time.Duration {
+	return min(ioTimeoutMS*time.Millisecond+time.Duration(n)*time.Second/writeMinRate, writeMaxMS*time.Millisecond)
+}
+
 func (s *session) write(conn *websocket.Conn, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	conn.SetWriteDeadline(time.Now().Add(ioTimeoutMS * time.Millisecond))
-	return conn.WriteJSON(v)
+	conn.SetWriteDeadline(time.Now().Add(writeTimeout(len(b))))
+	return conn.WriteMessage(websocket.TextMessage, b)
 }
 
 func (s *session) writeBinary(conn *websocket.Conn, b []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	conn.SetWriteDeadline(time.Now().Add(ioTimeoutMS * time.Millisecond))
+	conn.SetWriteDeadline(time.Now().Add(writeTimeout(len(b))))
 	return conn.WriteMessage(websocket.BinaryMessage, b)
 }
 

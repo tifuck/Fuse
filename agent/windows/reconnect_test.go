@@ -97,6 +97,19 @@ func TestRedialResumesTLS(t *testing.T) {
 	}
 }
 
+func TestWriteTimeoutScalesWithSize(t *testing.T) {
+	if got := writeTimeout(100); got < ioTimeoutMS*time.Millisecond || got > ioTimeoutMS*time.Millisecond+time.Second {
+		t.Fatalf("small frame: %v", got)
+	}
+	// A full 1 MiB frame at the minimum rate needs 64 s on top of the stall budget.
+	if got := writeTimeout(wsMax); got != ioTimeoutMS*time.Millisecond+64*time.Second {
+		t.Fatalf("1 MiB frame: %v", got)
+	}
+	if got := writeTimeout(100 << 20); got != writeMaxMS*time.Millisecond {
+		t.Fatalf("hard limit: %v", got)
+	}
+}
+
 func TestPingTimeout(t *testing.T) {
 	var w connWatch
 	connWatchInit(&w, 0, 0)

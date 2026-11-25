@@ -10,7 +10,14 @@
 #define SUSPEND_GAP_MS 2000
 #define BACKOFF_CAP_MS 15000
 #define CONNECT_TIMEOUT_MS 10000
+/* Overridable so tests can exercise the write deadlines in milliseconds. */
+#ifndef IO_TIMEOUT_MS
 #define IO_TIMEOUT_MS 10000
+#endif
+/* Hard limit on one frame write; IO_TIMEOUT_MS bounds each stall within it. */
+#ifndef WRITE_MAX_MS
+#define WRITE_MAX_MS 120000
+#endif
 
 enum wake_reason {
     WAKE_NONE = 0,

@@ -406,13 +406,22 @@ void tls_close(struct tls *t) {
 
 int tls_write_all(struct tls *t, const void *buf, size_t n) {
     const unsigned char *p = buf;
-    int64_t deadline = now_mono_ms() + IO_TIMEOUT_MS;
+    /* The stall deadline restarts on every record written, so a large frame
+     * on a slow uplink finishes; the hard limit still ends a peer that only
+     * trickles. One record per SSL_write: without partial-write mode a
+     * larger call shows no progress until it is done. A retry repeats the
+     * same pointer and length, as OpenSSL requires. */
+    int64_t start = now_mono_ms();
+    int64_t deadline = start + IO_TIMEOUT_MS;
     while (n) {
         if (g_wake_reason || g_stop_main) return -1;
-        int k = SSL_write(t->ssl, p, (int)n);
+        int k = SSL_write(t->ssl, p, (int)(n < 16384 ? n : 16384));
         if (k > 0) {
             p += k;
             n -= (size_t)k;
+            int64_t now = now_mono_ms();
+            deadline = now + IO_TIMEOUT_MS;
+            if (deadline > start + WRITE_MAX_MS) deadline = start + WRITE_MAX_MS;
             continue;
         }
         int err = SSL_get_error(t->ssl, k);
