@@ -14,6 +14,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app import db
 from app.config import settings
+from app.providers import logins
 from tests.core.auth._support import (
     PASSWORD, anonymous, call_route, dummy_path, http_routes, login, refused, sign_in,
 )
@@ -99,6 +100,21 @@ def test_a_write_without_the_session_csrf_token_is_refused(web):
         refused_write = web.post("/chat/threads", json={"model": "offline", "command_id": f"c{n + 1}"})
         assert refused_write.status_code == 403, token
     assert db.fetchone("SELECT COUNT(*) AS n FROM chat_threads WHERE user_id=?", (uid,))["n"] == 1
+
+
+def test_a_cross_site_link_cannot_replace_a_pending_nanogpt_sign_in(web, monkeypatch):
+    monkeypatch.setattr(settings, "public_base_url", "https://fuse.test")
+    uid = quick_user("alice@core.test")
+    sign_in(web, uid)
+    started = web.post("/sources/nanogpt/start")
+    pending = logins.get(uid, "nanogpt")
+    assert started.status_code == 200 and started.json()["url"] == pending["auth_url"]
+
+    assert web.get("/sources/nanogpt/start", follow_redirects=False).status_code == 405
+    token = web.headers.pop("x-csrf-token")
+    assert web.post("/sources/nanogpt/start").status_code == 403
+    web.headers["x-csrf-token"] = token
+    assert logins.get(uid, "nanogpt")["state"] == pending["state"]
 
 
 # Writes authenticated by something a browser does not send on its own (an

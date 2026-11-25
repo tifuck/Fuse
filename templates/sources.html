@@ -852,7 +852,7 @@
     <p class="aside">NanoGPT gives Fuse an API key for your account, named <code>OAuth: Fuse</code>. Paid models bill your NanoGPT balance; the consent screen lets you cap that spend. To share your subscription with the pool, set the key's billing to Subscription only on nano-gpt.com/api.</p>
     {% if nanogpt_oauth %}
     <div class="modal-actions">
-      <a class="btn" href="/sources/nanogpt/start">Sign in with NanoGPT</a>
+      <a class="btn" href="/sources/nanogpt/start" data-post-link>Sign in with NanoGPT</a>
     </div>
     {% endif %}
     <form method="post" action="/sources/nanogpt/device" class="modal-actions" style="margin-top:0.5rem">
