@@ -7,16 +7,15 @@
 -- command_jobs gets no foreign key: adding one copies the whole table, which
 -- the production updater refuses for a large table. Account delete
 -- (accounts.delete_user) and thread delete (chat_threads.forget_thread_rows)
--- remove its rows instead; this file deletes the ones left so far.
+-- remove its rows instead; the retention sweep (retention.prune_history)
+-- deletes the ones left so far in small batches, not this file: a scan of
+-- the whole table under row locks while production serves.
 --
--- Rows whose owner is already gone are deleted first, so each constraint
--- validates; nothing reads them. Safe to rerun.
+-- Rows of the three small tables whose owner is already gone are deleted
+-- first, so each constraint validates; nothing reads them. Safe to rerun.
 -- Apply as root, fuse_dev first, then fuse_live as its own reviewed step:
 --   mysql fuse_dev  < scripts/sql/2026-11-24-owner-cascades.sql
 --   mysql fuse_live < scripts/sql/2026-11-24-owner-cascades.sql
-DELETE j FROM command_jobs j LEFT JOIN users u ON u.id = j.user_id WHERE u.id IS NULL;
-DELETE j FROM command_jobs j LEFT JOIN chat_threads t ON t.id = j.thread_id
-  WHERE j.thread_id IS NOT NULL AND t.id IS NULL;
 DELETE g FROM chat_permission_grants g LEFT JOIN user_hosts h ON h.id = g.host_id WHERE h.id IS NULL;
 DELETE a FROM skill_host_approvals a LEFT JOIN user_hosts h ON h.id = a.host_id WHERE h.id IS NULL;
 DELETE p FROM pool_sessions p LEFT JOIN credentials c ON c.id = p.credential_id WHERE c.id IS NULL;
