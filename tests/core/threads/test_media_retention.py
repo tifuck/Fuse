@@ -228,6 +228,22 @@ def test_orphan_runs_delete_in_batches_and_young_or_owned_runs_stay(fresh_db, mo
     assert left == {young["id"], owned["id"]}
 
 
+def test_command_jobs_whose_account_or_chat_is_gone_are_deleted_in_batches(fresh_db, monkeypatch):
+    monkeypatch.setattr(retention, "_DELETE_BATCH", 1)
+    uid, gone_user = make_user(), make_user("gone@core.test")
+    gone, kept = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")
+    for job_id, owner, thread, status in (("no-chat", uid, gone, "completed"), ("no-user", gone_user, None, "failed"),
+                                          ("live", uid, gone, "running"), ("owned", uid, kept, "completed")):
+        db.execute("INSERT INTO command_jobs (id, user_id, host_id, thread_id, command, timeout_ms, status, created_at)"
+                   " VALUES (?,?,1,?,'true',1000,?,?)",
+                   (job_id, owner, pk(uid, thread["id"]) if thread else None, status, db.now()))
+    db.execute("DELETE FROM chat_threads WHERE id=?", (pk(uid, gone["id"]),))
+    db.execute("DELETE FROM users WHERE id=?", (gone_user,))
+
+    assert retention.prune_history()["orphan_jobs"] == 2
+    assert {row["id"] for row in db.fetchall("SELECT id FROM command_jobs")} == {"live", "owned"}
+
+
 def test_deleting_a_chat_or_project_deletes_its_media(fresh_db_fk):
     uid = make_user()
     chat, swept = chats.create_thread(uid, model="offline"), chats.create_thread(uid, model="offline")

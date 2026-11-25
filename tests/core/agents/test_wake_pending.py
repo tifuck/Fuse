@@ -38,6 +38,18 @@ def test_the_sweep_wakes_a_finished_background_report_until_it_is_delivered(fres
     assert chat_store.wake_candidates(uid, pk) == []
 
 
+def test_a_fork_never_wakes_to_redeliver_a_report_its_source_owes(fresh_db):
+    from app import chats
+
+    uid = coding_user()
+    pk, bg = _finished_background_child(uid)
+    fork = chats.fork_thread(uid, pk)
+    fork_pk = db.fetchone("SELECT id FROM chat_threads WHERE public_id=?", (fork["id"],))["id"]
+
+    assert _swept() == [(uid, pk)]
+    assert chat_store.wake_candidates(uid, fork_pk) == []
+
+
 def test_a_report_the_user_stopped_is_never_swept_but_still_waits_as_a_candidate(fresh_db):
     uid = coding_user()
     thread, parent = parent_and_thread(uid)

@@ -791,6 +791,17 @@ async def _wake_parent(user_id: int, thread_id) -> None:
             logger.exception("Wake run failed to start for thread %s", thread_id)
 
 
+# start_turn conflicts that clear on their own: a run is active, the user's
+# run cap is full, or this same command is still being applied. Any other 409
+# (command id reused for another request, unreadable transcript, a lost
+# image) fails the same way on every retry.
+_RETRY_CONFLICTS = frozenset({
+    "chat already has an active run",
+    "maximum of 20 active runs reached",
+    "this command is already being applied; retry to get its result",
+})
+
+
 async def start_queued(user_id: int, thread_id):
     """Start the thread's next queued message as the user's turn; returns its
     item id. None when nothing is queued, a run is active, or capacity is full
@@ -813,7 +824,8 @@ async def start_queued(user_id: int, thread_id):
                 attachments=item["attachments"], reasoning_effort=item["reasoning_effort"], auto_title=True,
             )
         except chats.ChatValidationError as exc:
-            if int(getattr(exc, "status_code", 0) or 0) in (409, 429):
+            status = int(getattr(exc, "status_code", 0) or 0)
+            if status == 429 or (status == 409 and exc.detail in _RETRY_CONFLICTS):
                 return None
             await durable_call(chat_queue.hold, user_id, thread_id, item["id"])
             raise

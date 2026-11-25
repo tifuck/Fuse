@@ -260,6 +260,30 @@ def test_a_double_continue_resumes_once_and_refuses_the_other(fresh_db):
     assert len(_notes(provider_messages(run["id"]), chat_recovery.USER_RESUME_NOTE_HEAD)) == 1
 
 
+def test_a_turn_started_after_continue_checked_the_chat_refuses_the_continue(fresh_db):
+    uid = quick_user()
+    thread, run = _crashed_run(uid, _transcript({"role": "assistant", "content": "half done"}))
+    chat_store.abort_active(run["id"], "cancelled")
+    real_fetchone = db.fetchone
+    started = []
+
+    def turn_lands_after_the_check(sql, *args, **kwargs):
+        row = real_fetchone(sql, *args, **kwargs)
+        if not started and sql.startswith("SELECT 1 FROM chat_runs WHERE thread_id=? AND status IN"):
+            started.append(True)
+            current = chats.get_thread(uid, thread["id"])
+            chat_store.start_turn(uid, thread["id"], "newer turn", current["revision"], None)
+        return row
+
+    before = json.dumps(dict(run_row(run["id"], "status,resume_count,message")))
+    with patch.object(db, "fetchone", side_effect=turn_lands_after_the_check):
+        with pytest.raises(ChatValidationError) as refused:
+            chat_recovery.resume_run(uid, run["id"])
+
+    assert started and refused.value.status_code == 409
+    assert json.dumps(dict(run_row(run["id"], "status,resume_count,message"))) == before
+
+
 def test_continue_after_stop_tells_the_model_the_user_stopped_its_unanswered_spawn(fresh_db):
     uid = quick_user()
     call = {"id": "s1", "type": "function", "function": {"name": "spawn_subagent", "arguments": "{}"}}

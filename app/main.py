@@ -2,9 +2,7 @@ import asyncio
 import inspect
 import logging
 import re
-import fcntl
 from contextlib import asynccontextmanager
-from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -56,9 +54,12 @@ async def _maintenance_loop(app: FastAPI):
         except Exception:
             logger.exception("Chat event prune failed")
         try:
-            await asyncio.to_thread(chat_runs.reap_orphans)
-            await chat_runs.resume_queued()
-            await asyncio.to_thread(chat_runs.sweep_wakes)
+            if await asyncio.to_thread(app.state.worker_lock.held):
+                await asyncio.to_thread(chat_runs.reap_orphans)
+                await chat_runs.resume_queued()
+                await asyncio.to_thread(chat_runs.sweep_wakes)
+            else:
+                logger.error("Lost the chat worker lock to another process: not reaping or resuming runs")
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -77,6 +78,66 @@ async def _maintenance_loop(app: FastAPI):
             raise
         except Exception:
             logger.exception("Chat retention sweep failed")
+
+
+# Seconds a booting process waits for the chat worker lock: covers a restart
+# whose old process is still shutting down.
+WORKER_LOCK_WAIT = 30
+
+
+class WorkerLock:
+    """One chat worker per database, across every folder and machine: a
+    MariaDB named lock held by a connection of its own for the process's
+    lifetime (a file lock only saw processes started from the same folder).
+    MariaDB releases it when that connection drops; held() then takes it
+    again on a new connection, and while another process has it this one
+    stops reaping and resuming runs (its own live runs carry on)."""
+
+    _NAME = "CONCAT('fuse_chat_worker:', DATABASE())"
+
+    def __init__(self, url: str):
+        self._url = url
+        self._conn = None
+
+    def acquire(self, wait: int = 0) -> bool:
+        from .mysql_compat import connect as mysql_connect
+
+        self.close()
+        conn = mysql_connect(self._url)
+        try:
+            got = conn.native(f"SELECT GET_LOCK({self._NAME}, %s)", (wait,)).fetchone()[0] == 1
+            conn.commit()
+        except BaseException:
+            conn.close()
+            raise
+        if not got:
+            conn.close()
+            return False
+        self._conn = conn
+        return True
+
+    def held(self) -> bool:
+        try:
+            mine = self._conn is not None and self._conn.native(
+                f"SELECT IS_USED_LOCK({self._NAME}) = CONNECTION_ID()").fetchone()[0] == 1
+            if mine:
+                self._conn.commit()
+                return True
+        except Exception:
+            logger.warning("Chat worker lock connection failed; taking the lock again", exc_info=True)
+        try:
+            return self.acquire()
+        except Exception:
+            logger.exception("Could not take the chat worker lock again")
+            return False
+
+    def close(self) -> None:
+        conn, self._conn = self._conn, None
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 async def _update_check_loop():
@@ -212,20 +273,12 @@ async def lifespan(app: FastAPI):
         static_assets.freeze()
     try:
         url = (getattr(settings, "database_url", "") or "").strip()
-        if url.startswith("mysql://"):
-            schema = urlsplit(url).path.strip("/") or "fuse"
-            if not re.fullmatch(r"[A-Za-z0-9_-]+", schema):
-                raise RuntimeError("Refusing worker lock for an invalid database name")
-            lock_dir = ROOT / "data"
-            lock_dir.mkdir(parents=True, exist_ok=True)
-            worker_lock = open(lock_dir / f"fuse.{schema}.chat-worker.lock", "a")
-        else:
+        if not url.startswith("mysql://"):
             raise RuntimeError("Fuse requires a configured MariaDB database")
-        if worker_lock is not None:
-            try:
-                fcntl.flock(worker_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise RuntimeError("Dashboard runs require one Fuse worker per database.") from None
+        worker_lock = WorkerLock(url)
+        if not await asyncio.to_thread(worker_lock.acquire, WORKER_LOCK_WAIT):
+            raise RuntimeError("Dashboard runs require one Fuse worker per database.")
+        app.state.worker_lock = worker_lock
         db.connect()
         db.resume_reprices()
         changelog.record_deploy()
@@ -525,9 +578,10 @@ async def health(request: Request):
         "healthy": refresh_ok and walk_ok,
         "last_cycle": getattr(app.state, "refresh_last_cycle", None),
     }
-    # Failure detail (exception types, job names) is for signed-in operators;
-    # anonymous callers get a count so the health contract stays stable.
-    if await asyncio.to_thread(accounts.session_user, request.session):
+    # Failure detail (exception types, job names) is for signed-in admins;
+    # everyone else gets a count so the health contract stays stable.
+    viewer = await asyncio.to_thread(accounts.session_user, request.session)
+    if viewer and viewer["is_admin"]:
         background["errors"] = errors
     else:
         background["error_count"] = len(errors)

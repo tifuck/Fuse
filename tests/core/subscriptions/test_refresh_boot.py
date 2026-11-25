@@ -27,7 +27,6 @@ def _stub_startup(monkeypatch, tmp_path):
     async def idle(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(main, "ROOT", tmp_path)  # the worker lock file
     monkeypatch.setattr(settings, "static_immutable", False)
     for mod, name in ((main.static_assets, "warm"), (main.static_assets, "build_id"), (changelog, "record_deploy"),
                       (accounts, "validate_credential_encryption"), (accounts, "ensure_setup_token"),

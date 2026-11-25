@@ -11,6 +11,9 @@ from . import chat_tx, db
 from .chat_schema import CONTENT_MAX, ChatValidationError
 
 KEY_MAX = 191
+# Drafts and stashed prompts per user: every save is an event and /chat loads
+# them all.
+DRAFTS_MAX = 200
 
 
 def list_drafts(user_id: int, conn=None) -> dict:
@@ -27,6 +30,10 @@ def set_draft(user_id: int, key, text, origin="") -> None:
     origin = str(origin or "")[:64]
     with chat_tx.transaction() as conn:
         if text.strip():
+            if not conn.execute("SELECT 1 FROM chat_drafts WHERE user_id=? AND draft_key=?", (user_id, key)).fetchone() \
+                    and conn.execute("SELECT COUNT(*) AS n FROM chat_drafts WHERE user_id=?",
+                                     (user_id,)).fetchone()["n"] >= DRAFTS_MAX:
+                raise ChatValidationError("too many saved drafts (%d): send or clear some first" % DRAFTS_MAX)
             conn.execute(
                 """INSERT INTO chat_drafts(user_id,draft_key,text,updated_at) VALUES(?,?,?,?)
                    ON CONFLICT(user_id,draft_key) DO UPDATE SET text=excluded.text,updated_at=excluded.updated_at""",

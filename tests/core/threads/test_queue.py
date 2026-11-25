@@ -53,6 +53,22 @@ def test_a_queued_message_sends_once_when_the_turn_ends(fresh_db):
     assert _user_texts(uid, thread["id"]) == ["first", "second"]
 
 
+def test_a_permanent_conflict_holds_the_item_instead_of_blocking_the_queue(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    numeric = pk(uid, thread["id"])
+    chat_queue.put(uid, numeric, {"id": "q-1", "text": "second", "created": 1})
+    chat_queue.put(uid, numeric, {"id": "q-2", "text": "third", "created": 2})
+    # A tab then sent the item edited: its command id names a different
+    # request, and every retry of the queued copy fails the same way.
+    used = chat_store.start_turn(uid, thread["id"], "second, edited", None, chat_queue.command_id("q-1"))["run"]
+    chat_store.finish_run(used["id"], {"content": "done"}, "completed")
+
+    with pytest.raises(ChatValidationError, match="command_id already used"):
+        run_async(chat_runs.start_queued(uid, numeric))
+    assert chat_queue.next_item(uid, numeric)["id"] == "q-2"
+
+
 def test_send_now_goes_first_and_its_priority_is_never_lowered(fresh_db):
     uid = make_user()
     thread, _ = _busy_thread(uid)

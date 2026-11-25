@@ -1099,7 +1099,7 @@ def _update_thread(conn, row, *, title, model, archived, pinned, messages, conte
     return msgs if messages is not None else None
 def forget_thread_rows(conn, user_id: int, ids) -> None:
     """What no foreign key removes with these threads: their command jobs
-    (output included) and their events. Call after the thread.deleted
+    (output included), composer drafts and events. Call after the thread.deleted
     events: those take the event cursor, which start_turn locks before
     command_jobs rows. The delete's own events stay, as every client drops
     the chat on them; chat_tx.prune_events takes those a day later."""
@@ -1109,6 +1109,14 @@ def forget_thread_rows(conn, user_id: int, ids) -> None:
     marks = ",".join("?" * len(ids))
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='command_jobs'").fetchone():
         conn.execute(f"DELETE FROM command_jobs WHERE user_id=? AND thread_id IN ({marks})", (user_id, *ids))
+    # Composer drafts are keyed by the public id, which the thread.deleted
+    # events carry (the thread rows are gone by now).
+    publics = [payload.get("id") for payload in (json.loads(row["payload"]) for row in conn.execute(
+        f"SELECT payload FROM chat_events WHERE user_id=? AND type='thread.deleted' AND thread_id IN ({marks})",
+        (user_id, *ids)).fetchall()) if isinstance(payload, dict) and isinstance(payload.get("id"), str)]
+    if publics:
+        conn.execute(f"DELETE FROM chat_drafts WHERE user_id=? AND draft_key IN ({','.join('?' * len(publics))})",
+                     (user_id, *publics))
     # shortcut: scans this user's events (a day of them at most); index
     # chat_events.thread_id if deleting a chat gets slow.
     conn.execute(
@@ -1242,16 +1250,25 @@ def _fork_rewriter(id_map: dict):
         return pattern.sub(lambda m: id_map.get(m.group(0), m.group(0)), text)
 
     return rewrite
-def _fork_request(text, rewrite, old_pk: int, new_pk: int):
+def _fork_request(text, rewrite, old_pk: int, new_pk: int, child: bool = False):
     text = rewrite(text)
     try:
         req = json.loads(text)
     except (TypeError, ValueError):
         return text
-    if isinstance(req, dict) and req.get("thread_id") == old_pk:
+    if not isinstance(req, dict):
+        return text
+    changed = False
+    if req.get("thread_id") == old_pk:
         req["thread_id"] = new_pk
-        return json.dumps(req, ensure_ascii=False, separators=(",", ":"))
-    return text
+        changed = True
+    agent = req.get("agent")
+    if child and isinstance(agent, dict) and not agent.get("wake_sent"):
+        # The source chat delivers a finished child's report; a wake in the
+        # fork would hand the same report over again.
+        agent["wake_sent"] = True
+        changed = True
+    return json.dumps(req, ensure_ascii=False, separators=(",", ":")) if changed else text
 def _fork_retained(raw, rewrite, old_messages, new_messages) -> str:
     """Carry the provider-history cache over to the fork. Its anchors hash
     message ids, so re-anchor them to the new ids, but only when the cache
@@ -1371,7 +1388,7 @@ def fork_thread(user_id: int, thread_id, *, expected_revision=None, command_id=N
                 elif name in ("parent_run_id", "root_run_id", "message_id") and value:
                     value = id_map.get(str(value), value)
                 elif name == "request":
-                    value = _fork_request(value, rewrite, pk, tid)
+                    value = _fork_request(value, rewrite, pk, tid, child=bool(run["parent_run_id"]))
                 elif name in mapped:
                     value = rewrite(value)
                 values.append(value)

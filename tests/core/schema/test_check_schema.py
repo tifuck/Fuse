@@ -108,6 +108,22 @@ def test_apply_refuses_a_column_only_a_migration_may_create(tmp_path, monkeypatc
         assert "provider_tail" not in columns and "activity" not in columns
 
 
+def test_apply_refuses_a_foreign_key_its_rows_break(tmp_path, monkeypatch, capsys):
+    spec = tmp_path / "schema.sql"
+    spec.write_text(";\n".join(FULL[t]["create"] for t in ("users", "user_hosts", "user_projects")) + ";\n")
+    projects = _without(FULL["user_projects"]["create"], "CONSTRAINT `fk_user_projects_1`")
+    with scratch_schema(FULL["users"]["create"], FULL["user_hosts"]["create"], projects) as (url, _name):
+        monkeypatch.setattr(settings, "database_url", url)
+        # A project whose account is gone (its host is not checked: that key exists).
+        run(url, "SET FOREIGN_KEY_CHECKS=0",
+            "INSERT INTO user_projects (user_id, host_id, name, remote_path, created_at) VALUES (99, 1, 'p', '/', 'now')")
+        assert check_schema.main(["--apply", str(spec)]) == 1
+        err = capsys.readouterr().err
+        assert "ADD CONSTRAINT `fk_user_projects_1`" in err and "reference a parent that is gone" in err
+        assert not run(url, "SELECT 1 FROM information_schema.table_constraints WHERE table_schema=DATABASE()"
+                            " AND constraint_name='fk_user_projects_1'")
+
+
 def test_the_2026_10_15_promote_would_have_been_refused():
     actual = {table: set(columns) for table, columns in COLUMNS.items()}
     actual["user_projects"].discard("default_permissions")
