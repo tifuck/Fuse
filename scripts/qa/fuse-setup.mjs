@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const THEMES = join(ROOT, 'static', 'themes');
 const VIEWS = readdirSync(THEMES).filter((id) => existsSync(join(THEMES, id, 'theme.json')));
-const FAKES = ['running', 'ask', 'asks', 'skill', 'env', 'secrets', 'error', 'agents', 'stats', 'dictation', 'pool', 'balance', 'terminal'];
+const FAKES = ['running', 'ask', 'asks', 'skill', 'env', 'secrets', 'error', 'agents', 'stats', 'dictation', 'pool', 'pool-next', 'balance', 'terminal'];
 const SESSION = join(ROOT, 'data', 'dev-qa-session.json');
 
 // --fake: states no fixture can hold, made by rewriting what the page reads
@@ -335,7 +335,7 @@ const FIXES = {
     if (fake.has('secrets')) data.running = true;
     if (fake.has('error') && last) last.error = 'Upstream returned 502 Bad Gateway after 3 retries (provider: qa/fixture-model)';
     // The badge app/sources/pool_badge.py would send for a shared Claude account.
-    if (fake.has('pool')) {
+    if (fake.has('pool') || fake.has('pool-next')) {
       const now = Math.round(startedAt / 1000);
       data.compaction = { ...(data.compaction || {}), pool: { model: data.model, provider: 'claude', pool: 'Claude', plan: 'Max 20x',
         id: 902, name: 'Claude plan 2', own: false,
@@ -351,6 +351,11 @@ const FIXES = {
         ready: 3, size: 4, hop: { from: 'Claude plan 1', reason: 'limit' },
         prefs: { can_override: true, open_access: false, share: 'contributors', use: 'pool', saved_share: 'contributors', saved_use: 'pool',
           contributor: true, skip: [905], primary: 903 } } };
+      // The user picked their own account while the turn runs: it is next.
+      if (fake.has('pool-next')) {
+        data.compaction.pool.next = { id: 903, name: 'qa.tester@example.invalid' };
+        data.compaction.pool.accounts[2].status = 'next';
+      }
     }
     // The badge pool_badge.py sends for a key outside a pool that reports only money left.
     if (fake.has('balance')) {
@@ -449,7 +454,7 @@ export default {
     const has = (...names) => names.some((name) => fake.has(name));
     if (has('agents') && /^\/chat\/threads\/[^/]+\/agents$/.test(path)) return 'agents';
     if (has('secrets') && /^\/chat\/threads\/[^/]+\/secrets\/offer$/.test(path)) return 'secrets';
-    if (has('running', 'ask', 'secrets', 'error', 'pool', 'balance') && /^\/chat\/threads\/[^/]+$/.test(path)) return 'thread';
+    if (has('running', 'ask', 'secrets', 'error', 'pool', 'pool-next', 'balance') && /^\/chat\/threads\/[^/]+$/.test(path)) return 'thread';
     if (has('ask') && /^\/chat\/threads\/[^/]+\/permissions$/.test(path)) return 'perms';
     return has('running') && /^\/chat\/runs\/[^/]+$/.test(path) ? 'run' : '';
   },

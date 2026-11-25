@@ -71,6 +71,9 @@
 //                                  --click '[data-pool-toggle]' opens its card,
 //                                  then '[data-pool-sharing]' its sharing panel
 //                                  (saving is refused: writes are aborted)
+//                         pool-next  pool, plus a pick waiting for the turn's
+//                                  next request (qa.tester, "next"); with
+//                                  running, its card offers Stop turn and switch
 //                         balance  the chat's model is an OpenRouter key that
 //                                  reports only money left ($14.20): the gauge
 //                                  shows the amount; its card has no sharing
