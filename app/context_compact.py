@@ -951,10 +951,14 @@ def fit_summary_messages(messages: list[dict], limit: int | None, *, tools=None,
     if window <= 0:
         return rows
     budget = max(4_000, window - config().output_reserve - 8_000 - estimate_tools(tools) - max(0, extra))
-    if estimate_messages(rows) <= budget:
+    # The estimate is a sum over rows: keep it as one, updated when a row
+    # shrinks, instead of re-estimating the transcript per row and halving.
+    costs = [estimate_messages([msg]) for msg in rows]
+    total = sum(costs)
+    if total <= budget:
         return rows
     for index, msg in enumerate(rows):
-        if estimate_messages(rows) <= budget:
+        if total <= budget:
             break
         if not isinstance(msg, dict) or msg.get("role") != "tool":
             continue
@@ -962,11 +966,14 @@ def fit_summary_messages(messages: list[dict], limit: int | None, *, tools=None,
         if len(text) <= 800:
             continue
         cap = len(text)
-        while cap > 800 and estimate_messages(rows) > budget:
+        while cap > 800 and total > budget:
             cap = max(800, cap // 2)
             rows[index] = {**msg, "content": _summary_span(text, cap)}
             msg = rows[index]
-    if estimate_messages(rows) > budget:
+            cost = estimate_messages([msg])
+            total += cost - costs[index]
+            costs[index] = cost
+    if total > budget:
         # Large user/assistant bodies: a clipped summary input beats an
         # overflowing request that silently degrades to truncate.
         rows, _n = clip_to_fit(rows, limit=budget, reserve=0)
