@@ -10,9 +10,10 @@ import json
 import httpx
 import pytest
 
-from app import chats, db, jev, permissions
+from app import chats, db, jev, permissions, secret_guard
 from app.sources import openrouter
 from tests.core.helpers import quick_user
+from tests.core.secrets._values import OPENAI
 from tests.core.tools._support import CardUser, make_host, new_thread
 
 ROOT = "/srv/app"
@@ -147,6 +148,15 @@ def test_no_key_or_an_overlong_command_never_reaches_jev(chat, decisions, monkey
     monkeypatch.setattr(openrouter, "user_has_openrouter", lambda user_id: False)
     assert judge(chat) is None
     assert decisions.requests == []
+
+
+def test_unreadable_secrets_never_reach_jev(chat, decisions):
+    secret_guard.add_manual(chat.uid, "API", OPENAI)
+    db.execute("UPDATE user_secrets SET cipher='not-a-token' WHERE user_id=?", (chat.uid,))
+    secret_guard._changed(chat.uid)
+    decisions.reply = verdict_for(0.1)
+
+    assert judge(chat) is None and decisions.requests == []
 
 
 # -- the gate in Auto mode ----------------------------------------------------

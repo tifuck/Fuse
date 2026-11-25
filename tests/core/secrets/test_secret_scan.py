@@ -163,6 +163,28 @@ def test_a_scan_whose_offer_failed_reads_the_folder_again(fresh_db, monkeypatch)
     assert [o["value"] for o in secret_guard.offers(uid)] == [OPENAI]
 
 
+def test_a_scan_whose_read_failed_reads_the_folder_again(fresh_db, monkeypatch):
+    uid = quick_user()
+    files = {".env": f"OPENAI_API_KEY={OPENAI}\n"}
+    reads = scanned_from(monkeypatch, files)
+    real_read = workspace.read_env_files
+
+    async def read_env_files(*args, **kwargs):
+        if len(reads) == 0:
+            reads.append("failed")
+            raise ConnectionError("host unreachable")
+        return await real_read(*args, **kwargs)
+
+    monkeypatch.setattr(workspace, "read_env_files", read_env_files)
+
+    async def body():
+        assert await secret_scan.ensure(uid, 5, "/srv/app") == 0
+        # The next round lists the folder again instead of waiting out the rescan interval.
+        assert await secret_scan.ensure(uid, 5, "/srv/app") == 1 and reads == ["failed", None]
+
+    run_async(body())
+
+
 def test_nothing_is_scanned_while_detection_is_off(fresh_db, monkeypatch):
     uid = quick_user()
     reads = scanned_from(monkeypatch, {".env": f"OPENAI_API_KEY={OPENAI}\n"})

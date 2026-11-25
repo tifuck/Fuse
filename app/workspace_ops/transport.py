@@ -158,6 +158,22 @@ def _agent_timed_out(data: dict) -> bool:
     return error == "timed out" or error.startswith("timed out")
 
 
+_EXIT_ERROR = re.compile(r"exit(?: -?\d+)?")
+
+
+def _agent_exec_failure(data: dict) -> str:
+    """The connector's reason when an exec never ran ("invalid cwd", "agent
+    is busy", ...); "" for a command that ran, whatever its exit. Connectors
+    report a plain non-zero exit as ok false with "exit N" or a line of its
+    output as the error, so only an error with no output and no exit text is
+    the connector's own. Needs the raw result (_enrich_agent_data rewrites
+    "exit N")."""
+    if not isinstance(data, dict) or data.get("ok") or _agent_timed_out(data) or data.get("out") or data.get("err"):
+        return ""
+    error = str(data.get("error") or "").strip()
+    return "" if _EXIT_ERROR.fullmatch(error) else error
+
+
 def _agent_job_output(stdout: str, stderr: str) -> str:
     stdout = stdout or ""
     stderr = stderr or ""

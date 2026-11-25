@@ -195,7 +195,11 @@ def _key_and_masked(user_id: int, state: dict) -> tuple[str, dict]:
     _cred, _extra, key, _via = picked
     if not key:
         return "", state
-    return key, secret_guard.mask_value(secret_guard.map_for(user_id), state)
+    secrets = secret_guard.map_for(user_id)
+    if secrets.broken:
+        # Fail closed like api._invoke_chat: values that cannot be read cannot be masked.
+        return "", state
+    return key, secret_guard.mask_value(secrets, state)
 
 
 def _auto_state(user_id: int, thread_id: int, action: dict, roots: list[str] | None) -> dict | None:
