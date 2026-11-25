@@ -836,10 +836,15 @@ async def chat_pool_switch(request: Request):
         account = int(str(form.get("account") or "0"))
     except ValueError:
         account = 0
-    if not model or not thread or account <= 0:
+    if not model or account <= 0:
         return JSONResponse({"pool": None}, status_code=400)
-    await asyncio.to_thread(_chat_thread_pk, user, thread)
-    view = await pool_badge.switch(user["id"], model, thread, account)
+    running = False
+    if thread:
+        pk = await asyncio.to_thread(_chat_thread_pk, user, thread)
+        running = await asyncio.to_thread(
+            db.fetchone, "SELECT 1 FROM chat_runs WHERE thread_id=? AND user_id=? AND parent_run_id IS NULL "
+            "AND status IN ('queued','running') LIMIT 1", (pk, user["id"])) is not None
+    view = await pool_badge.switch(user["id"], model, thread or None, account, running=running)
     return JSONResponse({"pool": view}, status_code=200 if view else 409, headers={"Cache-Control": "no-store"})
 
 

@@ -2,6 +2,7 @@
 import { S, draftKey } from '../state.js';
 import { fromHtml } from '../core.js';
 import { newSession } from '../state.js';
+import { claimPoolChoice } from '../poolbadge.js';
 
 // These commands are dispatched locally, never queued as model input.
 const LOCAL_SLASH = new Set(["thinking", "help", "permissions", "undo", "artifacts", "prompts", "theme"]);
@@ -246,6 +247,7 @@ export function createSend(ctx) {
         S.draftFiles.delete(originDraft);
         sidebar.upsertLocal(created);
         sync.setThreadUrl(S.currentId);
+        await claimPoolChoice();
       }
       if (S.pendingTurn && (S.pendingTurn.id !== S.currentId || S.pendingTurn.body.text !== text || (opts?.truncatedTo != null && S.pendingTurn.body.replace_from !== opts.truncatedTo))) {
         throw Object.assign(new Error("A previous send is unconfirmed. Retry its original text before sending another message."), { local: true });

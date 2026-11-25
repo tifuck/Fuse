@@ -1184,6 +1184,8 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
       place: (menu, anchor) => composer.placeComposerPop(menu, anchor, 30 * 16, true),
       overlays,
       closeOthers: () => { picker.closePicker(); perms.setPermsOpen(false); context.closeContextPop(); },
+      running: () => traces.runIsActive(S.activeRun),
+      stop: () => turns.requestStop().catch((error) => sync.showFailure("Could not stop", error)),
     });
 
     if (S.contextPop) {

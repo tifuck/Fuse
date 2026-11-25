@@ -54,6 +54,11 @@ _lock = threading.Lock()
 _write_lock = threading.Lock()
 # (kind, session id) -> (credential id, last use, updated_at last written)
 _mem: dict[tuple[str, str], tuple[int, str, str]] = {}
+# (kind, session id) -> the account the user moved the session to
+# (pool_badge.switch) that no request has looked up yet. A request already
+# in flight then still ends on its own account: its bind must not undo the
+# choice.
+_chosen: dict[tuple[str, str], int] = {}
 
 
 def _ts(now: datetime | None = None) -> str:
@@ -70,6 +75,7 @@ def reset_store() -> None:
     """Drop in-memory pins. Tests only."""
     with _lock:
         _mem.clear()
+        _chosen.clear()
 
 
 def drop_cache_routing_fields(body: dict) -> dict:
@@ -223,7 +229,11 @@ def session_id_from(
     return _scope(user_id, model, raw)
 
 
-def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: datetime | None = None) -> None:
+def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: datetime | None = None,
+         chosen: bool = False) -> None:
+    """Pin the session to the account that served it. chosen: the user picked
+    the account (pool_badge.switch); until a request looks the pin up, binds
+    of other accounts (requests that were in flight) leave it alone."""
     if not session_id or not credential_id:
         return
     kind = str(kind)
@@ -234,6 +244,13 @@ def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: d
     cutoff = _cutoff(now)
     with _write_lock:
         with _lock:
+            want = _chosen.get((kind, session_id))
+            if not chosen and want is not None and want != cid:
+                return
+            if chosen:
+                _chosen[(kind, session_id)] = cid
+            else:
+                _chosen.pop((kind, session_id), None)
             prev = _mem.get((kind, session_id))
             # The same pin, written recently: the durable row already says so.
             same = prev is not None and prev[0] == cid and prev[2] >= _ts(now - timedelta(seconds=TOUCH_SECONDS))
@@ -242,6 +259,7 @@ def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: d
             # forever. A healthy active pin is refreshed by every lookup.
             for key in [k for k, (_, updated, _saved) in _mem.items() if updated < cutoff]:
                 _mem.pop(key, None)
+                _chosen.pop(key, None)
         if persist and not same:
             # Under _write_lock, so the durable row ends on the pin memory holds.
             # Pinning runs after the upstream already served the request: a DB
@@ -280,7 +298,9 @@ def peek(kind: str, session_id: str | None) -> int | None:
     return int(row["credential_id"]) if row else None
 
 
-def lookup(kind: str, session_id: str | None, *, now: datetime | None = None) -> int | None:
+def lookup(kind: str, session_id: str | None, *, now: datetime | None = None, claim: bool = True) -> int | None:
+    """The session's pin for a request about to use it. claim (the session's
+    own request, not a relative's affinity hint) picks up a chosen pin."""
     if not session_id:
         return None
     kind = str(kind)
@@ -291,6 +311,8 @@ def lookup(kind: str, session_id: str | None, *, now: datetime | None = None) ->
     cid: int | None = None
     touch = False
     with _lock:
+        if claim:
+            _chosen.pop((kind, session_id), None)
         hit = _mem.get((kind, session_id))
         if hit:
             cid = int(hit[0])

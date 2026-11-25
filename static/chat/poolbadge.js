@@ -14,7 +14,7 @@ import { attachSheetSwipe, returnFocus } from './overlays.js';
 const CELLS = 5;
 const MANAGE = "/sources";
 const WHY = { limit: "it reached its usage limit", error: "it stopped answering" };
-const STATUS = { current: "in use", ready: "ready", full: "full", paused: "paused", off: "off" };
+const STATUS = { current: "in use", next: "next", ready: "ready", full: "full", paused: "paused", off: "off" };
 const SHARE = [
   ["everyone", "Anyone", (p) => `Anyone using the ${p} pool may use your accounts.`],
   ["contributors", "Sharers", (p) => `Only people who share a ${p} account too may use yours.`],
@@ -35,6 +35,9 @@ let deps = { place: () => {}, overlays: null };
 const PREVIEW_MS = 60_000;
 const previews = new Map();
 let previewing = "";
+// An account picked for a chat not sent yet ({key, id}): its preview stays
+// shown, and the send pins the chat there once it exists (claimPoolChoice).
+let choice = null;
 // An idle chat rereads its meter this often while the page is visible, and
 // the read starts the pool's usage refresh on the server; replies update it
 // anyway.
@@ -88,7 +91,7 @@ function previewKey() {
 // reply names the account that really served it.
 function previewed() {
   const hit = previews.get(previewKey());
-  if (!hit?.pool || Date.now() - hit.at > PREVIEW_MS) return null;
+  if (!hit?.pool || (Date.now() - hit.at > PREVIEW_MS && choice?.key !== previewKey())) return null;
   shownAt = hit.at;
   S.pool = hit.pool;
   S.poolThread = S.currentId;
@@ -99,7 +102,7 @@ function previewed() {
 function requestPreview() {
   const key = previewKey();
   const hit = previews.get(key);
-  if (!S.modelId || previewing === key || (hit && Date.now() - hit.at <= PREVIEW_MS)) return;
+  if (!S.modelId || previewing === key || choice?.key === key || (hit && Date.now() - hit.at <= PREVIEW_MS)) return;
   previewing = key;
   askPool().then((pool) => {
     if (previewing === key) previewing = "";
@@ -126,6 +129,7 @@ export function refreshPool() {
   const pool = current();
   if (!pool || saving || document.hidden || S.streaming || S.sending || Date.now() - shownAt < REFRESH_MS) return null;
   const key = previewKey();
+  if (choice?.key === key) return null;
   shownAt = Date.now();
   return askPool(true).then((fresh) => {
     if (!fresh || previewKey() !== key || current() !== pool) return;
@@ -241,6 +245,10 @@ function buildMenu() {
     else if (hit("data-pool-share")) save({ share: hit("data-pool-share").dataset.poolShare });
     else if (hit("data-pool-use")) save({ use: hit("data-pool-use").dataset.poolUse });
     else if (hit("data-pool-switch")) switchTo(Number(hit("data-pool-switch").dataset.poolSwitch));
+    else if (hit("data-pool-stop")) {
+      setOpen(false);
+      deps.stop?.();
+    }
     else if (hit("data-pool-first")) {
       const id = Number(hit("data-pool-first").dataset.poolFirst);
       save({ primary: current()?.prefs?.primary === id ? null : id });
@@ -370,6 +378,16 @@ function group(title, aside, rows, extra = "") {
     `<span class="chat-perms-count">${aside}</span></p><ul>${rows}</ul></section>`;
 }
 
+// The account the chat is on, framed apart from the account list: what it is
+// (in use, or next before a reply), its name and plan, then all its limits.
+function now(pool, plan, rows) {
+  const who = pool.own ? '<span class="chat-pool-who">yours</span>' : "";
+  return `<section class="chat-perms-group chat-pool-now"><div class="chat-pool-now-head">` +
+    `<span class="chat-pool-now-tag">${pool.preview ? "next" : "in use"}</span>` +
+    `<b class="chat-pool-now-name" title="${escapeHtml(pool.name)}">${escapeHtml(short(pool.name))}</b>${who}` +
+    `<span class="chat-pool-now-plan">${plan}</span></div><ul>${rows}</ul></section>`;
+}
+
 function head(title, backTo = "") {
   const back = backTo ? `<button type="button" class="chat-menu-close chat-pool-head-back" data-pool-back aria-label="Back to ${backTo}">${BACK_SVG}</button>` : "";
   return `<div class="chat-picker-head"><p>${back}${title}</p><button type="button" class="chat-menu-close" data-pool-close aria-label="Close">${CLOSE_SVG}</button></div>`;
@@ -382,7 +400,7 @@ function fillMenu(pool) {
 }
 
 function fillUsage(pool) {
-  const limit = (w) => line(escapeHtml(w.label), w.percent, w.reset_at ? escapeHtml(span(w.reset_at)) : "");
+  const limit = (w) => line(`<span class="chat-pool-label">${escapeHtml(w.label)}</span>`, w.percent, w.reset_at ? escapeHtml(span(w.reset_at)) : "");
   const plan = escapeHtml(`${pool.pool}${pool.plan ? " " + pool.plan : ""}`);
   const windows = windowsOf(pool.windows);
   const limits = windowsOf(pool.limits);
@@ -392,9 +410,11 @@ function fillUsage(pool) {
     const meta = a.status === "current" && pool.preview ? "next" :
       a.status === "limit" ? (a.until ? `back ${escapeHtml(span(a.until))}` : "at limit") : STATUS[a.status] || "";
     const pct = a.percent == null ? null : clamp(a.percent);
-    // Another usable account of a saved chat: a click moves the chat there.
-    const pick = S.currentId && !saving && (a.status === "ready" || a.status === "full")
-      ? ` data-pool-switch="${Number(a.id)}" role="button" tabindex="0" title="Use this account for this chat (its prompt cache starts cold)"` : "";
+    // Another usable account: a click moves the chat there. While a switch
+    // waits, a click on the account in use cancels it.
+    const stay = a.status === "current" && pool.next;
+    const pick = !saving && (a.status === "ready" || a.status === "full" || stay)
+      ? ` data-pool-switch="${Number(a.id)}" role="button" tabindex="0" title="${stay ? "Stay on this account" : "Use this account for this chat (its prompt cache starts cold)"}"` : "";
     return line(who, pct, meta, ` data-status="${escapeHtml(a.status)}"${pick}`, money(a.balance));
   };
   const cash = money(pool.balance);
@@ -402,6 +422,7 @@ function fillUsage(pool) {
   const hop = pool.hop && pool.hop.from
     ? `<li class="chat-perms-hint chat-pool-note">Moved here from ${escapeHtml(short(pool.hop.from))}${WHY[pool.hop.reason] ? `: ${WHY[pool.hop.reason]}` : ""}.</li>`
     : "";
+  const pending = pool.next ? pendingNote(pool) : "";
   const prefs = pool.prefs || {};
   const shareName = (SHARE.find(([id]) => id === prefs.share) || SHARE[0])[1];
   // A key outside a pool (prefs null) has no sharing settings.
@@ -411,13 +432,26 @@ function fillUsage(pool) {
   menu.setAttribute("aria-label", `${pool.pool} ${pool.prefs ? "plan " : ""}usage`);
   menu.innerHTML = head(pool.prefs ? "Plan usage" : "Usage") +
     '<div class="chat-perms-list">' +
-    group(plan, `<span title="${escapeHtml(pool.name)}">${escapeHtml(short(pool.name))}</span>`,
-      (windows.map(limit).join("") + balance || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop) +
-    (limits.length ? group("Model limits", "", limits.map(limit).join("")) : "") +
+    now(pool, plan, (windows.concat(limits).map(limit).join("") + balance || '<li class="chat-perms-empty">No usage reported yet.</li>') + hop + pending) +
     (accounts.length ? group("Accounts", `${Number(pool.ready) || 0} of ${Number(pool.size) || 0} ready`, accounts.map(acct).join("")) : "") +
     (notice ? `<p class="chat-perms-hint chat-pool-notice" role="status">${escapeHtml(notice)}</p>` : "") +
     "</div>" +
     `<div class="chat-perms-foot chat-pool-foot">${sharing}<a class="chat-pool-manage" href="${MANAGE}">Manage sources</a></div>`;
+}
+
+// A pick made while a turn runs: the turn's request in flight finishes on the
+// account it started on, the next one goes to the pick. Stop ends the turn
+// now (asking about background subagents, which keep their own accounts).
+function pendingNote(pool) {
+  const from = escapeHtml(short(pool.name));
+  const to = `<b title="${escapeHtml(pool.next.name)}">${escapeHtml(short(pool.next.name))}</b>`;
+  const running = deps.running?.();
+  const text = running
+    ? `This turn is on ${from}; ${to} takes over from its next request.`
+    : `The next reply uses ${to}.`;
+  const stop = running && deps.stop
+    ? ' <button type="button" class="chat-pool-share chat-pool-stop" data-pool-stop>Stop turn and <b>switch now</b></button>' : "";
+  return `<li class="chat-perms-hint chat-pool-note chat-pool-pending" role="status">${text}${stop}</li>`;
 }
 
 // The Sources sharing dialog, condensed: who may use your accounts, which
@@ -453,35 +487,47 @@ function fillSharing(pool) {
     `<div class="chat-perms-foot chat-pool-foot"><button type="button" class="chat-pool-share" data-pool-back><span aria-hidden="true">‹</span> Usage</button><a class="chat-pool-manage" href="${MANAGE}">Manage sources</a></div>`;
 }
 
-// Pins the chat to another account; the server answers with its badge.
+function postSwitch(thread, id) {
+  const body = new URLSearchParams({ model: S.modelId, account: String(id) });
+  if (thread) body.set("thread", thread);
+  return fetch("/chat/pool/switch", {
+    method: "POST",
+    headers: { Accept: "application/json", "X-CSRF-Token": csrfToken() },
+    body,
+  }).then((res) => (res.ok ? res.json() : null)).then((data) => data?.pool || null).catch(() => null);
+}
+
+// Pins the chat to another account; the server answers with its badge. A
+// chat not sent yet only previews it until the send creates the chat.
 async function switchTo(id) {
   const pool = current();
-  if (!pool || saving || !S.currentId || !(id > 0)) return;
+  if (!pool || saving || !(id > 0)) return;
   const key = previewKey();
+  const thread = S.currentId;
   saving = { switch: id };
   notice = "";
   fillMenu(pool);
-  let fresh = null;
-  try {
-    const res = await fetch("/chat/pool/switch", {
-      method: "POST",
-      headers: { Accept: "application/json", "X-CSRF-Token": csrfToken() },
-      body: new URLSearchParams({ model: S.modelId, thread: S.currentId, account: String(id) }),
-    });
-    fresh = res.ok ? (await res.json()).pool : null;
-  } catch (_) {
-    fresh = null;
-  }
+  const fresh = await postSwitch(thread, id);
   saving = null;
   if (previewKey() !== key || !current()) return;
   if (fresh?.name) {
-    notice = `The next reply uses ${short(fresh.name)}, so it starts a new prompt cache.`;
+    if (!thread) choice = { key, id };
+    notice = fresh.next ? "" : `The next reply uses ${short(fresh.name)}, so it starts a new prompt cache.`;
     previews.set(key, { at: Date.now(), pool: fresh });
     acceptPool(fresh);
   } else {
     notice = "Could not move this chat to that account.";
     if (menu && !menu.hidden) fillMenu(current());
   }
+}
+
+// The send's new chat takes the account picked before the chat existed.
+export async function claimPoolChoice() {
+  const picked = choice;
+  choice = null;
+  if (!picked || !S.currentId || picked.key !== `|${S.modelId || ""}`) return;
+  const fresh = await postSwitch(S.currentId, picked.id);
+  if (fresh?.name) acceptPool(fresh);
 }
 
 async function save(change) {
