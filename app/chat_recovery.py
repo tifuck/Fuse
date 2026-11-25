@@ -213,13 +213,15 @@ def _force_terminal(run_id, status, message):
                 if messages is None:
                     raise chats.ChatValidationError(chat_schema.UNREADABLE_TRANSCRIPT, 409)
                 messages = [stored if msg["id"] == row["message_id"] else msg for msg in messages]
-                revision = thread["revision"] + 1
+                # History first: if it fails, the transcript and revision stay
+                # as they were instead of landing without their history.
+                from . import chat_history
+                chat_history.finalize(conn, row, request, messages, stored)
                 conn.execute(
                     "UPDATE chat_threads SET messages=?,revision=revision+1,updated_at=? WHERE id=?",
                     (chat_tx.dumps(messages), db.now(), row["thread_id"]),
                 )
-                from . import chat_history
-                chat_history.finalize(conn, row, request, messages, stored)
+                revision = thread["revision"] + 1
             except Exception:
                 logger.exception("Failed to merge aborted run %s into thread", run_id)
                 revision = None
