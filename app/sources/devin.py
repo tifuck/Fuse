@@ -517,18 +517,11 @@ async def refresh_status(cred, *, force: bool = False) -> None:
 
 
 async def refresh_pool_status() -> None:
-    sid = ensure_devin_source()
-    rows = db.fetchall("SELECT * FROM credentials WHERE source_id=? AND disabled=0", (sid,))
+    sid = await asyncio.to_thread(ensure_devin_source)
+    rows = await asyncio.to_thread(db.fetchall, "SELECT * FROM credentials WHERE source_id=? AND disabled=0", (sid,))
     if not rows:
         return
-    results = await asyncio.gather(*(refresh_status(row) for row in rows), return_exceptions=True)
-    for row, result in zip(rows, results):
-        if isinstance(result, Exception):
-            logger.warning(
-                "Devin status refresh failed for credential %s",
-                row["id"],
-                exc_info=(type(result), result, result.__traceback__),
-            )
+    await pool_refresh.sweep("devin", rows, refresh_status, "Devin status refresh", ttl=USAGE_TTL)
 
 
 def account_email(extra: dict) -> str:

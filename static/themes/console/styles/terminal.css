@@ -17,9 +17,10 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] {
   & .term-grip { position: absolute; z-index: 3; top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; touch-action: none; }
   & .term-grip:is(:hover, :focus-visible), & .term-dock.is-resizing .term-grip { outline: 0; background: linear-gradient(transparent 3px, var(--brass) 3px, var(--brass) 5px, transparent 5px); }
   & .term-head { flex: none; display: flex; align-items: center; gap: 2px; height: 32px; padding: 0 6px 0 2px; border-bottom: 1px solid var(--line); }
-  & .term-tabs { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  & .term-tab { flex: 0 1 auto; min-width: 2.5rem; display: flex; align-items: center; height: 32px; border-bottom: 1px solid transparent; margin-bottom: -1px; color: var(--mute); }
-  & .term-tab.is-active { border-bottom-color: var(--brass); color: var(--mist); }
+  & .term-tabs { display: flex; min-width: 0; overflow: auto hidden; scrollbar-width: none; }
+  & .term-tab { flex: 0 1 auto; min-width: 2.5rem; display: flex; align-items: center; height: 24px; margin-right: 2px; border: 1px solid transparent; border-radius: 4px; color: var(--mute); }
+  & .term-tab:hover { background: var(--raise); }
+  & .term-tab.is-active { border-color: var(--line); background: var(--raise); color: var(--mist); box-shadow: inset 0 -1px 0 var(--brass); }
   & .term-tab-main { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 16rem; height: 100%; padding: 0 2px 0 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
   & .term-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & .term-tab-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }

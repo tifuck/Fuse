@@ -20,6 +20,7 @@ from . import mimo as mimo_mod
 from . import nanogpt as nanogpt_mod
 from . import openrouter as openrouter_mod
 from . import refuseless as refuseless_mod
+from . import pool_refresh
 from . import zai as zai_mod
 from .pool_pick import CHATGPT_FREE_PLANS, chatgpt_plan_type
 
@@ -113,7 +114,7 @@ def _targets() -> list[tuple[str, object, datetime]]:
             # One unreadable row must not stall the walk for every account.
             logger.warning("Usage walk skipped unreadable %s credential %s", kind, row["id"], exc_info=True)
             continue
-        if not _is_paid(kind, extra):
+        if not _is_paid(kind, extra) or pool_refresh.paused(kind):
             continue
         when = _parse_ts(_checked_at(extra)) or datetime.min.replace(tzinfo=timezone.utc)
         when = max(when, _failed_at.get(int(row["id"]), when))
@@ -135,27 +136,27 @@ def _next_target() -> tuple[str, object] | None:
     return (kind, cred) if cred else None
 
 
-async def refresh_one_usage(kind: str, cred) -> None:
+async def refresh_one_usage(kind: str, cred):
     if kind == "grok":
-        await grok_mod.refresh_billing(cred, force=True)
+        return await grok_mod.refresh_billing(cred, force=True)
     elif kind == "chatgpt":
-        await chatgpt_mod.refresh_usage(cred, force=True)
+        return await chatgpt_mod.refresh_usage(cred, force=True)
     elif kind == "zai":
-        await zai_mod.refresh_quota(cred, force=True)
+        return await zai_mod.refresh_quota(cred, force=True)
     elif kind == "devin":
-        await devin_mod.refresh_status(cred, force=True)
+        return await devin_mod.refresh_status(cred, force=True)
     elif kind == "kimi":
-        await kimi_mod.refresh_quota(cred, force=True)
+        return await kimi_mod.refresh_quota(cred, force=True)
     elif kind == "mimo":
-        await mimo_mod.refresh_quota(cred, force=True)
+        return await mimo_mod.refresh_quota(cred, force=True)
     elif kind == "cursor":
-        await cursor_mod.refresh_quota(cred, force=True)
+        return await cursor_mod.refresh_quota(cred, force=True)
     elif kind == "openrouter":
-        await openrouter_mod.refresh_key_info(cred, force=True)
+        return await openrouter_mod.refresh_key_info(cred, force=True)
     elif kind == "nanogpt":
-        await nanogpt_mod.refresh_usage(cred, force=True)
+        return await nanogpt_mod.refresh_usage(cred, force=True)
     elif kind == "refuseless":
-        await refuseless_mod.refresh_usage(cred, force=True)
+        return await refuseless_mod.refresh_usage(cred, force=True)
     else:
         # Counted as a failure, so an unhandled kind goes to the back of the
         # walk instead of staying its stalest account forever.
@@ -169,7 +170,7 @@ async def walk_next() -> str | None:
         return None
     kind, cred = target
     try:
-        await refresh_one_usage(kind, cred)
+        pool_refresh.note_result(kind, await refresh_one_usage(kind, cred))
     except Exception:
         logger.warning("Usage walk failed for %s credential %s", kind, cred["id"], exc_info=True)
         _failed_at[int(cred["id"])] = datetime.now(timezone.utc)

@@ -18,7 +18,6 @@ from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, lift_cooldown, note_failure, pick_account, release, reserve
 from . import http_pool, pool_policy, pool_refresh
 from .pool_session import bind, drop_cache_routing_fields, lookup
-from .token_store import log_refresh_failures
 
 USAGE_TTL = 300
 HOLD_HOURS = 24
@@ -476,8 +475,7 @@ async def refresh_pool_quota(*, force: bool = False) -> None:
     )
     if not rows:
         return
-    results = await asyncio.gather(*(refresh_quota(c, force=force) for c in rows), return_exceptions=True)
-    log_refresh_failures("Z.AI quota refresh", rows, results)
+    await pool_refresh.sweep("zai", rows, lambda c: refresh_quota(c, force=force), "Z.AI quota refresh", ttl=USAGE_TTL, force=force)
 
 
 def _remember_models(names: list[str]) -> list[str]:

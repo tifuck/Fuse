@@ -10,12 +10,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from datetime import timedelta
 
-from .. import db
+from .. import accounts, db
+from ..providers import creds
 from . import pool_policy
 from .pool_session import chosen, lookup
+from .token_store import log_refresh_failures
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,76 @@ async def wait(task: asyncio.Task) -> None:
         await asyncio.shield(task)
     except Exception:
         pass
+
+
+# One sweep reads at most this many of a provider's accounts at once, so a
+# pool of hundreds is read a few at a time instead of all in one burst.
+CONCURRENCY = 4
+# Token refreshes come due spread out; this caps a backlog (after downtime).
+TOKEN_CONCURRENCY = 8
+# After a usage read answers 429, that provider's sweeps and the usage walk
+# leave it alone this long; the accounts not read stay stale for later.
+RATE_LIMIT_PAUSE = 300.0
+_paused_until: dict[str, float] = {}
+_LIMITED = re.compile(r"\bhttp 429\b")
+
+
+def paused(name: str) -> bool:
+    return time.monotonic() < _paused_until.get(name, 0.0)
+
+
+def note_result(name: str, result) -> None:
+    """Pause the provider when a refresher's stored billing says 429."""
+    if isinstance(result, dict) and _LIMITED.search(str(result.get("last_error") or "")):
+        if not paused(name):
+            logger.warning("%s answered 429 to a usage read; pausing its usage reads for %ss", name, RATE_LIMIT_PAUSE)
+        _paused_until[name] = time.monotonic() + RATE_LIMIT_PAUSE
+
+
+async def each(rows, run_one, what: str, *, limit: int = CONCURRENCY) -> list:
+    """run_one(row) for every row, at most `limit` at a time; failures are
+    logged and returned in place, as gather(return_exceptions=True) does."""
+    slots = asyncio.Semaphore(limit)
+
+    async def one(row):
+        async with slots:
+            return await run_one(row)
+
+    results = await asyncio.gather(*(one(row) for row in rows), return_exceptions=True)
+    log_refresh_failures(what, rows, results)
+    return results
+
+
+def _stale(rows, ttl: float) -> list:
+    def fresh(row) -> bool:
+        try:
+            extra = accounts.cred_extra(row)
+        except Exception:
+            return False
+        billing = extra.get("billing")
+        return isinstance(billing, dict) and creds.usage_fresh(billing, ttl)
+
+    return [row for row in rows if not fresh(row)]
+
+
+async def sweep(name: str, rows, refresh_one, what: str, *, ttl: float, force: bool = False) -> None:
+    """A pool's usage refresh: the accounts not read within ttl (all of them
+    when forced), CONCURRENCY at a time, stopping once the provider answers
+    429. Fresh accounts are dropped here, in a thread, so a large pool costs
+    no per-account task or lock on every request."""
+    if paused(name):
+        return
+    if not force:
+        rows = await asyncio.to_thread(_stale, rows, ttl)
+
+    async def one(row):
+        if paused(name):
+            return None
+        result = await refresh_one(row)
+        note_result(name, result)
+        return result
+
+    await each(rows, one, what)
 
 
 # Request-path token refresh (refresh_due(rows)): per provider, the accounts

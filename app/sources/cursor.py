@@ -43,7 +43,7 @@ from .grok import apply_usage_guard, is_held
 from .pool_pick import Failover, auth_failure_confirmed, explain_empty, note_failure, pick_account, release, reserve
 from . import http_pool, pool_policy, pool_refresh
 from .pool_session import bind
-from .token_store import log_refresh_failures, persist_rotated, reread, shield_refresh
+from .token_store import persist_rotated, reread, shield_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -493,8 +493,7 @@ async def refresh_due(rows=None) -> bool:
     due, _urgent, due_at = await asyncio.to_thread(_due_accounts, rows)
     pool_refresh.scanned("cursor", rows, due_at)
     if due:
-        results = await asyncio.gather(*(refresh_one(c) for c in due), return_exceptions=True)
-        log_refresh_failures("Cursor token refresh", due, results)
+        await pool_refresh.each(due, refresh_one, "Cursor token refresh", limit=pool_refresh.TOKEN_CONCURRENCY)
     return bool(due)
 
 
@@ -606,13 +605,13 @@ async def refresh_quota(cred, *, force: bool = False) -> dict | None:
 
 
 async def refresh_pool_quota(*, force: bool = False) -> None:
-    rows = db.fetchall(
+    rows = await asyncio.to_thread(
+        db.fetchall,
         "SELECT c.* FROM credentials c JOIN sources s ON s.id=c.source_id WHERE s.type='cursor' AND c.disabled=0"
     )
     if not rows:
         return
-    results = await asyncio.gather(*(refresh_quota(c, force=force) for c in rows), return_exceptions=True)
-    log_refresh_failures("Cursor usage refresh", rows, results)
+    await pool_refresh.sweep("cursor", rows, lambda c: refresh_quota(c, force=force), "Cursor usage refresh", ttl=USAGE_TTL, force=force)
 
 
 # --- Catalog --------------------------------------------------------------------
