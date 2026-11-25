@@ -132,6 +132,12 @@ def test_the_card_saves_sharing_through_the_sources_endpoint(fresh_db):
         assert res.status_code == 200 and res.json()["ok"] is True
         prefs = res.json()["prefs"]
         assert (prefs["share"], prefs["use"], prefs["skip"], prefs["primary"]) == ("contributors", "mine", [first], second)
+        # A non-ASCII digit ("²" passes isdigit, not int) is ignored like any junk id.
+        res = client.post("/sources/pool/claude/prefs", headers={"Accept": "application/json"}, data={
+            "share": "contributors", "use": "mine", "accounts_listed": f"{first},{second},²",
+            "account": [str(second), "²"], "primary": "²"})
+        assert res.status_code == 200 and res.json()["ok"] is True
+        assert (res.json()["prefs"]["skip"], res.json()["prefs"]["primary"]) == ([first], None)
         # Leaving out every account is refused, and the reply says so.
         res = client.post("/sources/pool/claude/prefs", headers={"Accept": "application/json"}, data={
             "share": "contributors", "use": "mine", "accounts_listed": f"{first},{second}"})

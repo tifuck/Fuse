@@ -732,7 +732,7 @@ async def user_pool_prefs(request: Request, kind: str):
 
 
 def _form_ids(values) -> set[int]:
-    return {int(v) for v in values if str(v).strip().isdigit()}
+    return {int(v) for v in map(str.strip, map(str, values)) if v.isascii() and v.isdigit()}
 
 
 def _save_account_choice(uid: int, kind: str, form) -> tuple[dict, str]:
@@ -744,7 +744,7 @@ def _save_account_choice(uid: int, kind: str, form) -> tuple[dict, str]:
     old = pool_policy.account_choice(uid, kind)
     skip = (set(old["skip"]) - listed) | (listed - checked)
     raw_primary = str(form.get("primary") or "")
-    primary = int(raw_primary) if raw_primary.isdigit() and int(raw_primary) in checked else None
+    primary = int(raw_primary) if raw_primary.isascii() and raw_primary.isdigit() and int(raw_primary) in checked else None
     rows = db.fetchall(
         "SELECT * FROM credentials WHERE source_id=? AND disabled=0", (pool_policy.source_id(kind),)
     )

@@ -189,7 +189,7 @@ def _cas_update_tokens(cred_id: int, old_extra_raw: str, new_secret: str, new_ex
 def _expires_at(seconds) -> str:
     try:
         span = int(seconds or 28800)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         span = 28800
     span = max(60, min(span, 31536000))
     return (datetime.now(timezone.utc) + timedelta(seconds=span)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -575,14 +575,16 @@ async def _refresh_one_unlocked(cred) -> bool:
     except json.JSONDecodeError:
         note_failure(row["id"], cooldown_seconds=30)
         return False
-    if not isinstance(data, dict) or r.status_code != 200 or "access_token" not in data:
+    if not isinstance(data, dict) or r.status_code != 200 or not isinstance(data.get("access_token"), str) or not data["access_token"]:
         if _oauth_revoked(r.status_code, data if isinstance(data, dict) else {}):
             revoked_grant(row, extra, "claude", disable_credential, oauth_reason(r.status_code, data))
         else:
             note_failure(row["id"], cooldown_seconds=60 if r.status_code == 429 else 30)
         return False
+    # A missing or malformed refresh_token means the grant was not rotated.
+    new_rt = data["refresh_token"] if isinstance(data.get("refresh_token"), str) and data["refresh_token"] else rt
     extra["access_token"] = data["access_token"]
-    extra["refresh_token"] = data.get("refresh_token") or rt
+    extra["refresh_token"] = new_rt
     extra["expires_at"] = _expires_at(data.get("expires_in"))
     extra["auth_kind"] = "oauth"
     if data.get("scope"):

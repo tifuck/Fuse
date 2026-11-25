@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from app import db
-from app.sources import pool_policy, zai
+from app.sources import pool_pick, pool_policy, zai
 from tests.core.subscriptions._support import account, extra_of, fresh_billing, http, run, user
 
 USAGE = {"prompt_tokens": 1, "completion_tokens": 1, "cached_tokens": 0}
@@ -59,6 +59,18 @@ def test_glm_5_3_sends_mapped_reasoning_effort_and_never_disables_thinking(pool,
     assert payload.get("reasoning_effort") == effort
     assert "reasoning" not in payload and "prompt_cache_key" not in payload
     assert payload.get("thinking", {}).get("type") != "disabled"
+
+
+def test_a_failure_before_the_request_leaves_no_request_in_flight(pool, monkeypatch):
+    owner, cred, source, _upstream = pool
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("no client")
+
+    monkeypatch.setattr(zai.http_pool, "client", broken)
+    with pytest.raises(RuntimeError):
+        run(source.chat({"model": "glm-5.3", "messages": [{"role": "user", "content": "hi"}]}, user_id=owner))
+    assert pool_pick.in_flight(cred) == 0
 
 
 def test_older_glm_keeps_its_thinking_switch_and_takes_no_effort_levels(pool):

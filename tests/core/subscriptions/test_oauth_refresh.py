@@ -112,13 +112,25 @@ def test_a_transient_refresh_failure_only_cools_the_account(fresh_db, monkeypatc
     assert pool_pick.cooling_down(cred)
 
 
+@pytest.mark.parametrize("refresh", [None, 123])
 @pytest.mark.parametrize("kind", list(BACKENDS))
-def test_an_answer_with_a_null_refresh_token_keeps_the_stored_one(fresh_db, monkeypatch, kind):
+def test_an_answer_with_a_null_refresh_token_keeps_the_stored_one(fresh_db, monkeypatch, kind, refresh):
     cred = linked(kind)
-    answer = httpx.Response(200, json={"access_token": "at-1", "refresh_token": None, "expires_in": 3600})
+    answer = httpx.Response(200, json={"access_token": "at-1", "refresh_token": refresh, "expires_in": 3600})
     with http(lambda request: answer, monkeypatch):
         assert run(BACKENDS[kind].refresh_one(row(cred))) is True
     assert (extra_of(cred)["access_token"], extra_of(cred)["refresh_token"]) == ("at-1", "rt-0")
+
+
+@pytest.mark.parametrize("access", [None, 123, ""])
+@pytest.mark.parametrize("kind", list(BACKENDS))
+def test_a_200_without_a_usable_access_token_only_cools_the_account(fresh_db, monkeypatch, kind, access):
+    cred = linked(kind)
+    answer = httpx.Response(200, json={"access_token": access, "refresh_token": "rt-1", "expires_in": 3600})
+    with http(lambda request: answer, monkeypatch):
+        assert run(BACKENDS[kind].refresh_one(row(cred))) is False
+    assert (extra_of(cred)["access_token"], extra_of(cred)["refresh_token"]) == ("at-0", "rt-0")
+    assert row(cred)["disabled"] == 0 and pool_pick.cooling_down(cred)
 
 
 @pytest.mark.parametrize("kind", list(BACKENDS))
@@ -196,6 +208,27 @@ def test_cursor_renews_with_its_non_rotating_refresh_token_and_logs_out_when_tol
     with http(lambda request: httpx.Response(200, json={"shouldLogout": True}), monkeypatch):
         assert run(cursor.refresh_one(row(cred))) is False
     assert row(cred)["disabled"] == 1
+
+
+def test_a_rejected_cursor_api_key_is_disabled_on_its_second_strike_and_a_403_never_strikes(fresh_db, monkeypatch):
+    sid = cursor.ensure_cursor_source()
+    expired = jwt({"sub": "u1", "exp": 1})
+    forbidden = cursor.store_tokens(sid, expired, "", user("a@core.test"), api_key="key_forbidden_123456")
+    rejected = cursor.store_tokens(sid, jwt({"sub": "u2", "exp": 1}), "", user("b@core.test"), api_key="key_rejected_1234567")
+
+    def handler(request):
+        bad = "key_rejected" in request.headers.get("authorization", "")
+        return httpx.Response(401 if bad else 403, text="no")
+
+    with http(handler, monkeypatch) as calls:
+        for _ in range(3):
+            assert run(cursor.refresh_one(row(forbidden))) is False
+        assert run(cursor.refresh_one(row(rejected))) is False
+        assert row(rejected)["disabled"] == 0 and pool_pick.cooling_down(rejected)
+        assert run(cursor.refresh_one(row(rejected))) is False
+    assert len(calls.requests) == 5
+    assert row(rejected)["disabled"] == 1
+    assert row(forbidden)["disabled"] == 0 and pool_pick.cooling_down(forbidden)
 
 
 def test_cursor_keeps_a_refresh_token_it_rotates(fresh_db, monkeypatch):

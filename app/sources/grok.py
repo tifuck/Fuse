@@ -765,14 +765,16 @@ async def _refresh_one_unlocked(cred) -> bool:
     if not isinstance(data, dict):
         note_failure(row["id"], cooldown_seconds=30)
         return False
-    if r.status_code != 200 or "access_token" not in data:
+    if r.status_code != 200 or not isinstance(data.get("access_token"), str) or not data["access_token"]:
         if _oauth_revoked(r.status_code, data):
             revoked_grant(row, extra, "grok", disable_credential, oauth_reason(r.status_code, data))
         else:
             note_failure(row["id"], cooldown_seconds=60 if r.status_code == 429 else 30)
         return False
+    # A missing or malformed refresh_token means the grant was not rotated.
+    new_rt = data["refresh_token"] if isinstance(data.get("refresh_token"), str) and data["refresh_token"] else rt
     extra["access_token"] = data["access_token"]
-    extra["refresh_token"] = data.get("refresh_token") or rt
+    extra["refresh_token"] = new_rt
     extra["expires_at"] = expires_at(data.get("expires_in"), 21600)
     # The old refresh token is already spent: a cancellation during this
     # optional lookup must not skip persisting the rotated pair below.
@@ -800,7 +802,7 @@ async def _refresh_one_unlocked(cred) -> bool:
         extra,
         {
             "access_token": data["access_token"],
-            "refresh_token": data.get("refresh_token") or rt,
+            "refresh_token": new_rt,
             "expires_at": extra["expires_at"],
         },
         merge=_merge,
