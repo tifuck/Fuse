@@ -1502,14 +1502,71 @@ def _make_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int, 
 _TEMP_UNSAFE = "fuse-temp-unsafe:"
 
 
+# Rights that let another account change a folder or what is in it: create
+# files/folders, delete children, delete, change permissions, take ownership,
+# GENERIC_ALL, GENERIC_WRITE (Write, Modify and FullControl all include some).
+_WIN_WRITE_RIGHTS = 0x500D0046
+
+# One round trip, Windows PowerShell 5.1: missing folders are created with a
+# protected ACL (full control for SYSTEM, Administrators and this identity
+# only, set at creation), then every folder from the Fuse temp base down must
+# be a real folder (no reparse point) owned by one of those three and grant
+# no write-type right to anyone else. Inherit-only ACEs grant nothing here.
+_WIN_TEMP_MKDIR_PS = r"""& {
+$ErrorActionPreference = 'Stop'
+$dirs = @(__DIRS__)
+$me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$ok = @($me, 'S-1-5-18', 'S-1-5-32-544')
+$sec = New-Object Security.AccessControl.DirectorySecurity
+$sec.SetAccessRuleProtection($true, $false)
+foreach ($s in $ok) {
+    $sid = New-Object Security.Principal.SecurityIdentifier($s)
+    $sec.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+}
+foreach ($d in $dirs) {
+    if (-not (Test-Path -LiteralPath $d)) { [void][IO.Directory]::CreateDirectory($d, $sec) }
+    $bad = $true
+    try {
+        $item = Get-Item -LiteralPath $d -Force
+        $acl = Get-Acl -LiteralPath $d
+        $bad = -not $item.PSIsContainer -or ([int]($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+            ($ok -notcontains $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value)
+        foreach ($r in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+            if ($r.AccessControlType -eq 'Allow' -and [int]($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -eq 0 -and
+                ($ok -notcontains $r.IdentityReference.Value) -and ([int64]$r.FileSystemRights -band __RIGHTS__) -ne 0) { $bad = $true }
+        }
+    } catch { $bad = $true }
+    if ($bad) { Write-Output ('__UNSAFE__' + $d); return }
+}
+}"""
+
+
+def _win_fuse_temp_dirs(path: str) -> list[str]:
+    """The Fuse temp base (...\\Temp\\fuse) and each folder below it down to
+    `path`, which in_fuse_temp(path, True) has accepted."""
+    from .permissions import _WIN_TEMP_ABS, WIN_TEMP_HOME, expand_temp
+
+    full = ntpath.normpath(expand_temp(str(path), True).replace("/", "\\"))
+    low, home = full.lower(), WIN_TEMP_HOME.lower()
+    cut = len(home) if low == home or low.startswith(home + "\\") else _WIN_TEMP_ABS.match(low).end()
+    prefix, parts = full[:cut].rstrip("\\"), [p for p in full[cut:].split("\\") if p]
+    return [prefix + "\\" + "\\".join(parts[:i + 1]) for i in range(len(parts))]
+
+
 def _fuse_temp_mkdir_cmd(path: str, windows: bool) -> str:
-    """mkdir -p for a folder in the Fuse temp dir. On POSIX, /tmp is shared:
-    new folders are made 700, and /tmp/fuse and every folder below it on the
-    way to `path` must be a real directory of this account that no one else
-    may write to, or another local user could swap files Fuse put there
-    (prints _TEMP_UNSAFE and the folder). %TEMP% on Windows is per account."""
+    """mkdir -p for a folder in the Fuse temp dir. New folders are private
+    (700; a protected ACL on Windows), and the Fuse temp base and every
+    folder below it on the way to `path` must be a real directory of this
+    account that no one else may write to, or another local user could swap
+    files Fuse put there (prints _TEMP_UNSAFE and the folder). On POSIX /tmp
+    is shared. On Windows %TEMP%\\fuse is rewritten to the profile's
+    AppData\\Local\\Temp, private to its account, but an elevated connector
+    runs as SYSTEM and C:\\Windows\\Temp (accepted as temp too) lets any user
+    create folders."""
     if windows:
-        return f"New-Item -ItemType Directory -Force -Path ({_ps_path_expr(path)}) | Out-Null"
+        dirs = ", ".join(f"({_ps_path_expr(d)})" for d in _win_fuse_temp_dirs(path))
+        return (_WIN_TEMP_MKDIR_PS.replace("__DIRS__", dirs).replace("__RIGHTS__", hex(_WIN_WRITE_RIGHTS))
+                .replace("__UNSAFE__", _TEMP_UNSAFE))
     parts = posixpath.normpath(path).split("/")[2:]  # "/tmp/fuse/a" -> fuse, a
     dirs = " ".join(shlex.quote("/tmp/" + "/".join(parts[:i + 1])) for i in range(len(parts)))
     return (
@@ -3177,8 +3234,9 @@ def _serialize_file_mutation(fn):
 async def _agent_mkdir_parent(user_id, host_id, path: str, *, windows: bool) -> bool:
     from .permissions import in_fuse_temp
 
-    if not windows and in_fuse_temp(posixpath.dirname(path), False):
-        return await _make_fuse_temp_dir(user_id, host_id, posixpath.dirname(path), windows=False)
+    parent = (ntpath if windows else posixpath).dirname(path)
+    if in_fuse_temp(parent, windows):
+        return await _make_fuse_temp_dir(user_id, host_id, parent, windows=windows)
     if windows:
         cmd = (
             f"$p = {_ps_path_expr(path)}\n"

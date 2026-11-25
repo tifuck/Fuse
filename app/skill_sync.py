@@ -73,12 +73,11 @@ async def sync(user_id: int, slug: str, *, host: str | None, bound_host_id, boun
             return verdict.detail
         if verdict.resolved:
             await asyncio.to_thread(remember, user_id, host_id, slug, digest)
-    if not windows:
-        # The folder name is predictable: refuse one another account made first.
-        try:
-            await workspace._make_fuse_temp_dir(user_id, host_id, folder, windows=False)
-        except WorkspaceError as exc:
-            return f"Skill files not copied to {alias}: {exc.detail}"
+    # The folder name is predictable: refuse one another account made first.
+    try:
+        await workspace._make_fuse_temp_dir(user_id, host_id, folder, windows=windows)
+    except WorkspaceError as exc:
+        return f"Skill files not copied to {alias}: {exc.detail}"
     sep = "\\" if windows else "/"
     for rel, content in texts.items():
         args = {"path": folder + sep + rel.replace("/", sep), "content": content, "host": alias}

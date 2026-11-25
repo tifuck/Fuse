@@ -396,6 +396,21 @@ def test_a_temp_dir_another_account_owns_is_refused(ssh_host):
     assert h.shell.reached == ["ls"] and not h.fs.exists(cwd + "/new/run.sh")
 
 
+def test_the_windows_temp_dir_script_makes_private_folders_and_checks_each_one():
+    # Text only: the script is never run here.
+    script = workspace._fuse_temp_mkdir_cmd("%TEMP%\\fuse\\c-1\\it's", True)
+    home = "(Join-Path $env:USERPROFILE 'AppData\\Local\\Temp\\fuse"
+    assert f"$dirs = @({home}'), {home}\\c-1'), {home}\\c-1\\it''s'))" in script
+    assert "SetAccessRuleProtection($true, $false)" in script and "CreateDirectory($d, $sec)" in script
+    assert "$ok = @($me, 'S-1-5-18', 'S-1-5-32-544')" in script
+    for check in ("ReparsePoint", "GetOwner(", "-band 0x500d0046", "InheritOnly", "'fuse-temp-unsafe:' + $d"):
+        assert check in script, check
+    # SYSTEM's C:\Windows\Temp is temp too, and any user may create folders there.
+    script = workspace._fuse_temp_mkdir_cmd("C:/Windows/Temp/fuse/skills/demo-1", True)
+    assert "$dirs = @(('C:\\Windows\\Temp\\fuse'), ('C:\\Windows\\Temp\\fuse\\skills'), " \
+           "('C:\\Windows\\Temp\\fuse\\skills\\demo-1'))" in script
+
+
 def test_an_older_connector_without_streaming_still_runs_the_command(agent_host):
     agent_host.connector.overrides["exec_stream"] = {"ok": False, "exit": None, "out": "", "err": "",
                                                      "error": "unknown op"}
