@@ -118,6 +118,18 @@ def test_a_client_reasoning_effort_maps_to_a_listed_level(pool, monkeypatch, bod
     assert json.loads(calls.requests[0].content).get("reasoning") == reasoning
 
 
+def test_another_users_account_gets_no_service_tier_and_only_safe_reasoning_fields(pool, monkeypatch):
+    account("chatgpt", user("lender@core.test"), linked())
+    body = {"model": "gpt-6.1-sol-fast", "messages": HISTORY[:2],
+            "reasoning": {"effort": "high", "summary": "detailed", "max_tokens": 99999, "budget": "unlimited"}}
+    with http(lambda request: ok_stream(), monkeypatch) as calls:
+        result, _frames = chat_frames(pool, body)
+    assert result.status == 200
+    payload = json.loads(calls.requests[0].content)
+    assert "service_tier" not in payload
+    assert payload["reasoning"] == {"effort": "high", "summary": "detailed"}
+
+
 def test_images_in_tool_results_follow_the_outputs_in_a_user_item_of_the_same_turn(pool, monkeypatch):
     owner, _source = pool
     account("chatgpt", owner, linked())

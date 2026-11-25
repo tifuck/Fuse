@@ -913,7 +913,7 @@ class ChatGPTSource:
             try:
                 reserve(cred["id"])
                 try:
-                    resp = await self._post(token, account_id, for_account(payload, cred["id"]), client,
+                    resp = await self._post(token, account_id, for_account(payload, cred, user_id), client,
                                             _turn_state(cred["id"], turn_key))
                 except httpx.TimeoutException as exc:
                     last = ChatResult(
@@ -950,7 +950,7 @@ class ChatGPTSource:
                             extra = accounts.cred_extra(row)
                             token = extra.get("access_token") or accounts.cred_secret(row)
                             account_id = extra.get("account_id") or None
-                        resp = await self._post(token, account_id, for_account(payload, cred["id"]), client,
+                        resp = await self._post(token, account_id, for_account(payload, cred, user_id), client,
                                                 _turn_state(cred["id"], turn_key))
                 if resp.status_code != 200:
                     obj = await _error_body(resp)
