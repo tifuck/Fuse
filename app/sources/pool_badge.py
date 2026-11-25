@@ -394,8 +394,7 @@ def _preview(src, upstream: str, user_id: int, model: str, thread_id: str | None
     scope_model = base_slug(upstream) if kind == "chatgpt" else upstream
     pinned = None
     if thread_id:
-        # The chat runtime's cache key for a conversation (chat_runtime: "thread:<id>").
-        pinned = pool_session.peek(kind, pool_session.related_session_id(f"thread:{thread_id}", user_id=user_id, model=scope_model))
+        pinned = pool_session.peek(kind, _thread_session(user_id, thread_id, scope_model))
     args = {"prefer_id": pinned, "owner_id": user_id, "primary_id": pool_policy.primary_account(user_id, kind)}
     got = probe._pick(upstream, **args) if kind == "chatgpt" else probe._pick(**args)
     if not got:
@@ -405,6 +404,15 @@ def _preview(src, upstream: str, user_id: int, model: str, thread_id: str | None
         view["preview"] = int(got[0]["id"]) != pinned
     return view
 
+
+def _thread_session(user_id: int, thread_id: str, scope_model: str) -> str | None:
+    """The pool session the chat runtime keys a conversation's requests by:
+    its cache key "thread:<pk>" (chat_runtime), the thread's row id, not the
+    public id the page names it by."""
+    from .. import chats
+
+    pk = chats.resolve_thread_pk(user_id, thread_id)
+    return pool_session.related_session_id(f"thread:{pk}", user_id=user_id, model=scope_model) if pk else None
 
 
 async def switch(user_id: int, model: str, thread_id: str | None, cred_id: int, *, running: bool = False) -> dict | None:
@@ -434,9 +442,10 @@ async def switch(user_id: int, model: str, thread_id: str | None, cred_id: int, 
             view["preview"] = True
         return view
     scope_model = base_slug(upstream) if kind == "chatgpt" else upstream
-    # The chat runtime's cache key for a conversation (chat_runtime: "thread:<id>").
-    pool_session.bind(kind, pool_session.related_session_id(f"thread:{thread_id}", user_id=user_id, model=scope_model),
-                      int(cred_id), chosen=True)
+    session = await asyncio.to_thread(_thread_session, user_id, thread_id, scope_model)
+    if not session:
+        return None
+    await asyncio.to_thread(pool_session.bind, kind, session, int(cred_id), chosen=True)
     # The thread's record moves too, so the chat shows the new account before its next reply.
     from .. import chat_checkpoint
 

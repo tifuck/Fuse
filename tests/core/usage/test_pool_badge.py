@@ -15,6 +15,14 @@ def _claude_email(five_hour, weekly, email):
     return data
 
 
+def _runtime_session(me, thread):
+    """The pool session the chat runtime's requests for this chat use: its
+    cache key "thread:<pk>" (chat_runtime), scoped like any client key."""
+    from app import chats
+
+    return pool_session.related_session_id(f"thread:{chats.resolve_thread_pk(me, thread)}", user_id=me, model="claude-opus-5-5")
+
+
 def _claude(five_hour, weekly, reset="2099-01-01T00:00:00Z"):
     return {"access_token": "tok", "billing": {"windows": [
         {"id": "five_hour", "label": "5-hour", "percent": five_hour, "resets_at": reset},
@@ -157,10 +165,13 @@ def test_before_a_reply_the_gauge_shows_the_account_the_next_request_uses(fresh_
     view = asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5"))
     assert view["id"] == fresh and view["preview"] is True and view["model"] == "claude/claude-opus-5-5"
     # A chat pinned to an account: that account, exactly, and the pin is not refreshed.
-    sid = pool_session.related_session_id("thread:abc", user_id=me, model="claude-opus-5-5")
+    from app import chats
+
+    thread = chats.create_thread(me, model="claude/claude-opus-5-5")["id"]
+    sid = _runtime_session(me, thread)
     pool_session.bind("claude", sid, busy)
     stamp = pool_session._mem[("claude", sid)]
-    view = asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5", "abc"))
+    view = asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5", thread))
     assert view["id"] == busy and view["preview"] is False
     assert pool_session._mem[("claude", sid)] == stamp
     assert src.creds == []  # the live source is untouched
@@ -311,7 +322,7 @@ def test_a_click_moves_the_chat_to_another_account_of_its_pool(fresh_db, monkeyp
     monkeypatch.setattr(sources, "pick", pick)
     monkeypatch.setattr(pool_session, "persist", False)
     thread = chats.create_thread(me, model="claude/claude-opus-5-5")["id"]
-    sid = pool_session.related_session_id(f"thread:{thread}", user_id=me, model="claude-opus-5-5")
+    sid = _runtime_session(me, thread)
     pool_session.bind("claude", sid, first)
     from app import chat_checkpoint
     chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, first, "claude", "claude/claude-opus-5-5"))
@@ -325,6 +336,10 @@ def test_a_click_moves_the_chat_to_another_account_of_its_pool(fresh_db, monkeyp
     stored = context_compact.parse_state(row["compaction"])["pool"]
     assert (stored["cred"], stored["prev"]) == (second, first)
     assert asyncio.run(pool_badge.preview(me, "claude/claude-opus-5-5", thread))["id"] == second
+    # The pick beats a conversation kept on the old account (Cursor's), once.
+    from app.sources import pool_refresh
+    assert pool_refresh.pins("claude", sid, None, me, pinned=first)[0] == second
+    assert pool_refresh.pins("claude", sid, None, me, pinned=first)[0] == first
     # An account the caller's requests may not use is refused, and nothing moves.
     assert asyncio.run(pool_badge.switch(me, "claude/claude-opus-5-5", thread, theirs)) is None
     assert pool_session.peek("claude", sid) == second
@@ -346,7 +361,7 @@ def test_a_pick_during_a_turn_survives_the_request_in_flight(fresh_db, monkeypat
     monkeypatch.setattr(pool_session, "persist", False)
     model = "claude/claude-opus-5-5"
     thread = chats.create_thread(me, model=model)["id"]
-    sid = pool_session.related_session_id(f"thread:{thread}", user_id=me, model="claude-opus-5-5")
+    sid = _runtime_session(me, thread)
     pool_session.bind("claude", sid, first)
     chat_checkpoint.save_pool(me, thread, lambda prior: pool_badge.state(prior, first, "claude", model))
 

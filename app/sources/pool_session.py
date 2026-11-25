@@ -281,6 +281,14 @@ def bind(kind: str, session_id: str | None, credential_id: int | None, *, now: d
                 logger.warning("Could not persist pool session pin kind=%s credential=%s", kind, cid, exc_info=True)
 
 
+def chosen(kind: str, session_id: str | None) -> int | None:
+    """The account the user moved the session to that no request has used yet."""
+    if not session_id:
+        return None
+    with _lock:
+        return _chosen.get((str(kind), str(session_id)[:SESSION_ID_MAX]))
+
+
 def peek(kind: str, session_id: str | None) -> int | None:
     """The account a session is pinned to, without refreshing the pin: a
     look from the chat page must not keep a conversation alive."""
