@@ -319,6 +319,30 @@ def test_scripts_fed_to_a_shell_or_interpreter_on_stdin_ask(chat):
         assert asks(chat, "run_terminal_command", command=command), command
     for command in ("ls | sort", "cat a | shasum", "python3 tool.py < src/in.txt", "make || true"):
         assert not asks(chat, "run_terminal_command", command=command), command
+    for command in ("bash <(rev <<< 'x')", "echo id | bash /dev/stdin", "echo id | source /dev/stdin"):
+        assert asks(chat, "run_terminal_command", command=command), command
+    assert not asks(chat, "run_terminal_command", command="diff <(sort a.txt) <(sort b.txt)")
+
+
+def test_arguments_computed_at_run_time_ask(chat):
+    # Every literal word sits in the root, yet the real target is /root/.ssh/id_rsa.
+    hidden = ("echo L3Jvb3QvLnNzaC9pZF9yc2E= | base64 -d | xargs cat",
+              r"printf '\x2froot\x2f.ssh\x2fid_rsa' | xargs cat")
+    for command in hidden:
+        assert permissions.extract_shell_paths(command, ROOT, False) == [], command
+        denied, user = review(chat, "run_terminal_command", command=command, answer="deny")
+        assert not denied.allowed and "computed text" in denied.detail, command
+        assert user.asks[0]["grant_kind"] == "", command
+    for command in ("git ls-files | xargs wc -l", "xxd -r -p hex.txt", "openssl enc -d -aes-256-cbc -in x",
+                    r"echo -e '\057etc\057shadow'", "tar czf o.tgz -T list.txt", "rsync -a --files-from=- . /tmp/o"):
+        assert asks(chat, "run_terminal_command", command=command), command
+    for command in ("Get-Content ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('QzpcVXNlcnM=')))",
+                    r"Get-Content ('C'+':\Users\x\.ssh\id_rsa')", "certutil -decode a.b64 a.txt"):
+        assert asks(chat, "run_terminal_command", command=command, root="C:\\proj", windows=True), command
+    for command in ("cat src/a.py | grep x", "base64 -w0 logo.png", r"printf '%s\n' a b", "tar -xzf a.tgz -C out"):
+        assert not asks(chat, "run_terminal_command", command=command), command
+    for command in ("git status", "Get-Content a.txt | Select-String x", "Remove-Item 'build' -Force"):
+        assert not asks(chat, "run_terminal_command", command=command, root="C:\\proj", windows=True), command
 
 
 def test_a_device_is_a_target_only_for_a_verb_that_changes_it(chat):
