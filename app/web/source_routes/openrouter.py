@@ -181,11 +181,14 @@ async def _openrouter_json(request: Request):
 
 @router.post("/sources/openrouter/settings")
 async def openrouter_settings(request: Request):
-    """Account switches: free models, every paid model, privacy routing."""
+    """Account switches: free models, every paid model, privacy and precision routing."""
     user, body, err = await _openrouter_json(request)
     if err:
         return err
     uid = user["id"]
+    floor, unknown = body.get("min_precision"), body.get("precision_unknown")
+    if isinstance(floor, str) and floor and floor not in openrouter_mod.PRECISIONS:
+        return JSONResponse({"error": "Unknown precision."}, status_code=400)
     if isinstance(body.get("free_models"), bool):
         openrouter_mod.set_free_models(uid, body["free_models"])
     if isinstance(body.get("paid_all"), bool):
@@ -202,6 +205,13 @@ async def openrouter_settings(request: Request):
             data_collection_deny=deny if isinstance(deny, bool) else prefs["data_collection"] == "deny",
             zdr=zdr if isinstance(zdr, bool) else prefs["zdr"],
         )
+    if isinstance(floor, str) or isinstance(unknown, bool):
+        prefs = openrouter_mod.provider_prefs(uid)
+        openrouter_mod.set_precision(
+            uid,
+            floor=(floor or None) if isinstance(floor, str) else prefs["min_precision"],
+            allow_unknown=unknown if isinstance(unknown, bool) else prefs["precision_unknown"],
+        )
     invalidate_model_cache("openrouter")
     prefs = openrouter_mod.provider_prefs(uid)
     return JSONResponse(
@@ -210,6 +220,8 @@ async def openrouter_settings(request: Request):
             "paid_all": openrouter_mod.paid_models_pref(uid)["all"],
             "data_collection_deny": prefs["data_collection"] == "deny",
             "zdr": prefs["zdr"],
+            "min_precision": prefs["min_precision"] or "",
+            "precision_unknown": prefs["precision_unknown"],
         }
     )
 
@@ -227,8 +239,14 @@ async def openrouter_model_providers(request: Request, model: str = ""):
     rows = await openrouter_mod.fetch_model_endpoints(model)
     if rows is None:
         return JSONResponse({"error": "OpenRouter is not reachable right now."}, status_code=503)
-    selected = openrouter_mod.provider_prefs(user["id"])["models"].get(model) or []
-    return JSONResponse({"providers": rows, "selected": selected})
+    prefs = openrouter_mod.provider_prefs(user["id"])
+    # Rows are the shared cache: mark copies with this user's precision floor.
+    rows = [
+        {**row, "below_floor": not any(openrouter_mod.precision_ok(v["quantization"], prefs) for v in row["variants"])}
+        for row in rows
+    ]
+    return JSONResponse({"providers": rows, "selected": prefs["models"].get(model) or [],
+                         "min_precision": prefs["min_precision"] or ""})
 
 
 @router.post("/sources/openrouter/providers")

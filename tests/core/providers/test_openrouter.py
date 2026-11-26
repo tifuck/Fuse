@@ -135,6 +135,26 @@ def test_a_call_bills_the_callers_own_key_with_the_translated_payload(setup, ups
     assert "cache_control" not in free
 
 
+def test_the_precision_floor_filters_quantizations_and_keeps_unpublished_ones_unless_skipped(setup, upstream):
+    sid, (_k, alice, _b) = setup
+    _link(sid, alice, "sk-or-alice-key")
+    upstream.on("POST", "/chat/completions", httpx.Response(200, json=completion()))
+    _chat(sid, alice, {"model": GLM})
+    openrouter.set_precision(alice, floor="fp8", allow_unknown=True)
+    _chat(sid, alice, {"model": GLM})
+    openrouter.set_precision(alice, floor="fp16", allow_unknown=False)
+    _chat(sid, alice, {"model": GLM})
+
+    off, fp8, strict = (body["provider"] for body in upstream.sent("/chat/completions"))
+    assert "quantizations" not in off
+    assert fp8["quantizations"] == ["fp8", "fp16", "bf16", "fp32", "unknown"]
+    assert strict["quantizations"] == ["fp16", "bf16", "fp32"]
+    prefs = openrouter.provider_prefs(alice)
+    assert not openrouter.precision_ok("fp8", prefs) and openrouter.precision_ok("bf16", prefs)
+    assert not openrouter.precision_ok("", prefs)
+    assert openrouter.precision_ok("mxfp8", {"min_precision": "fp8"}) and not openrouter.precision_ok("nvfp4", {"min_precision": "fp8"})
+
+
 def test_a_mandatory_reasoning_model_drops_a_stale_none_effort(setup, upstream):
     sid, (_k, alice, _b) = setup
     _link(sid, alice, "sk-or-alice-key")
