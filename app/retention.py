@@ -242,6 +242,7 @@ def sweep_user(user_id: int, prefs: dict | None = None, *, now: datetime | None 
                         if _project_unchanged(conn, user_id, p, sessions) and \
                                 hosts.set_project_archived(conn, user_id, int(p["id"]), True, skip_running=True) is not None:
                             stats["archived_projects"] += 1
+                            hosts.projects_changed(conn, user_id)
                             p["archived"] = 1
                             # Archived just now: the delete pass must age them from
                             # this moment, not from their old activity timestamps.

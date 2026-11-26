@@ -101,6 +101,7 @@ export function createThreads(ctx) {
       render.setHistoryTab("projects", { persist: true, silent: true });
     }
     syncTitle();
+    render.renderHistory();
   }
 
     function dropThread(id) {

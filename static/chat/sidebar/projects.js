@@ -193,6 +193,42 @@ export function createProjects(ctx) {
     return S.projects.find((item) => Number(item.host_id) === Number(hostId) && Number(item.id) === Number(projectId));
   }
 
+    // projects.updated (or a save in this tab) carries the projects as they
+  // are now. Session rows, search hits and an unsent project session keep
+  // their own copy of the project's machine, name, color and logo, so those
+  // are rewritten too: the rows, the chat's project chip and choices cards
+  // all show the change at once instead of after a reload.
+  function acceptProjects(list) {
+    const before = threads.sessionProject();
+    S.projects = list;
+    const byId = new Map(list.map((item) => [Number(item.id), item]));
+    const fresh = (item) => {
+      if (item.kind !== "project" || item.project_id == null) return;
+      const project = byId.get(Number(item.project_id));
+      if (!project) return;
+      item.host_id = project.host_id;
+      item.host_alias = project.host_alias || "";
+      item.project_name = project.name || "";
+      item.project_color = project.color || "";
+      item.project_logo_url = project.logo_url || "";
+    };
+    [S.threads, S.archivedThreads, S.searchThreads, S.searchArchived].forEach((items) => items.forEach(fresh));
+    S.searchProjects = S.searchProjects.filter((item) => byId.has(Number(item.id))).map((item) => byId.get(Number(item.id)));
+    const pending = S.pendingProject && byId.get(Number(S.pendingProject.project_id));
+    if (pending) {
+      S.pendingProject = { ...S.pendingProject, host_id: pending.host_id, host_alias: pending.host_alias || "",
+        project_name: pending.name, remote_path: pending.remote_path, permission_mode: pending.permission_mode,
+        color: pending.color, logo_url: pending.logo_url };
+    }
+    const after = threads.sessionProject();
+    if (before && after && (String(before.host_id) !== String(after.host_id) || before.remote_path !== after.remote_path)) {
+      composer.refreshProjectListing();
+    }
+    threads.syncTitle();
+    render.renderHistory();
+    artifacts.refreshChoices();
+  }
+
     function boundTo(hostId, projectId) {
     const bound = threads.sessionProject();
     return Boolean(bound && Number(bound.host_id) === Number(hostId) && Number(bound.project_id) === Number(projectId));
@@ -212,6 +248,13 @@ export function createProjects(ctx) {
       S.pendingProject = { ...S.pendingProject, host_id: saved.host_id, host_alias: saved.host_alias,
         project_name: saved.name, remote_path: saved.remote_path,
         permission_mode: saved.permission_mode, color: saved.color, logo_url: saved.logo_url };
+    }
+    const listed = sidebarProject(hostId, projectId);
+    if (listed) {
+      Object.assign(listed, { host_id: saved.host_id, host_alias: saved.host_alias, name: saved.name,
+        remote_path: saved.remote_path, permission_mode: saved.permission_mode,
+        default_permissions: saved.default_permissions, color: saved.color, logo_url: saved.logo_url });
+      acceptProjects(S.projects);
     }
     await render.refreshThreads();
   }
@@ -298,6 +341,7 @@ export function createProjects(ctx) {
   }
 
   return {
+    acceptProjects,
     editProject,
     fillProjectFilterOptions,
     moveToProject,
