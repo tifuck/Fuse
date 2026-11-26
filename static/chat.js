@@ -335,7 +335,7 @@ import { marksHtml, italicKeepsWidth } from './chat/composer/marks.js';
     overlays,
     panels,
     picker,
-    sidebar: { setHistoryOpen: (...args) => sidebar.setHistoryOpen(...args), syncHistory: (...args) => sidebar.syncHistory(...args), upsertLocal: (...args) => sidebar.upsertLocal(...args) },
+    sidebar: { acceptProjects: (...args) => sidebar.acceptProjects(...args), setHistoryOpen: (...args) => sidebar.setHistoryOpen(...args), syncHistory: (...args) => sidebar.syncHistory(...args), upsertLocal: (...args) => sidebar.upsertLocal(...args) },
     sync: { showFailure: (...args) => sync.showFailure(...args) },
   });
 

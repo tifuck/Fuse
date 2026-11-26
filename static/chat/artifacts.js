@@ -111,7 +111,7 @@ export function createArtifacts(ctx) {
     if (picker && picker.setHint) picker.setHint(text);
   }
 
-  const choices = createChoices({ net, hint, showFailure, saveBackdrop, upsertLocal: (thread) => sidebar.upsertLocal(thread) });
+  const choices = createChoices({ net, hint, showFailure, saveBackdrop, upsertLocal: (thread) => sidebar.upsertLocal(thread), acceptProjects: (list) => sidebar.acceptProjects(list) });
 
   function artifactCalls() {
     const out = [];
@@ -1233,6 +1233,7 @@ export function createArtifacts(ctx) {
     noteDrafting,
     offerRestore,
     openList,
+    refreshChoices: () => choices.refresh(),
     versionMarks,
     rememberLatestArtifact,
     setArtifactOpen,

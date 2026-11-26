@@ -702,7 +702,8 @@ def create_thread(
         )
         if memory_off:
             conn.execute("UPDATE chat_threads SET memory_off=1 WHERE id=?", (tid,))
-        if proj is not None and int(proj["archived"] or 0):
+        # Its project's session count and latest session changed.
+        if proj is not None:
             hosts.projects_changed(conn, user_id)
         result = store.publish_thread_view(conn, user_id, tid)
         store.remember(conn, user_id, command_id, fingerprint, result)
@@ -904,8 +905,12 @@ def unarchive_on_activity(conn, row, ts):
         return
     conn.execute("UPDATE chat_threads SET archived=0, archived_at='', archived_by_project=0, active_at=? WHERE id=?", (ts, row["id"]))
     if (row["kind"] if "kind" in row.keys() else "") == "project" and row["project_id"] is not None:
-        conn.execute("UPDATE user_projects SET archived=0, archived_at='' WHERE id=? AND user_id=? AND archived=1",
-                     (row["project_id"], row["user_id"]))
+        cur = conn.execute("UPDATE user_projects SET archived=0, archived_at='' WHERE id=? AND user_id=? AND archived=1",
+                           (row["project_id"], row["user_id"]))
+        if cur.rowcount:
+            from . import hosts
+
+            hosts.projects_changed(conn, row["user_id"])
 def _lock_revision(conn, table: str, column: str, seen, where: str, args: tuple) -> None:
     """Row-lock what was just read, at the revision it was read at. The plain
     SELECT before it does not lock on MariaDB (BEGIN IMMEDIATE is a no-op
@@ -1084,10 +1089,14 @@ def _update_thread(conn, row, *, title, model, archived, pinned, messages, conte
             # Restoring counts as activity, so auto-archive does not take it straight back.
             conn.execute("UPDATE chat_threads SET archived_at='', archived_by_project=0, active_at=? WHERE id=?", (now, row["id"]))
             if (row["kind"] if "kind" in row.keys() else "") == "project" and row["project_id"] is not None:
-                conn.execute(
+                cur = conn.execute(
                     "UPDATE user_projects SET archived=0, archived_at='' WHERE id=? AND user_id=? AND archived=1",
                     (row["project_id"], row["user_id"]),
                 )
+                if cur.rowcount:
+                    from . import hosts
+
+                    hosts.projects_changed(conn, row["user_id"])
     elif messages is not None:
         conn.execute("UPDATE chat_threads SET active_at=? WHERE id=?", (ts, row["id"]))
         if edited and archived is None:
@@ -1140,7 +1149,7 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
         pk = resolve_thread_pk(user_id, thread_id, conn)
         if pk is None:
             return False
-        row = conn.execute("SELECT revision, public_id FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id)).fetchone()
+        row = conn.execute("SELECT revision, public_id, kind, project_id FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id)).fetchone()
         if row is None:
             return False
         if expected_revision is not None:
@@ -1173,6 +1182,10 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
         conn.execute("DELETE FROM chat_runs WHERE thread_id=? AND user_id=?", (pk, user_id))
         conn.execute("DELETE FROM chat_threads WHERE id=? AND user_id=?", (pk, user_id))
         store.event(conn, user_id, "thread.deleted", pk, {"revision": row["revision"] + 1, "id": public})
+        if row["kind"] == "project" and row["project_id"] is not None:
+            from . import hosts
+
+            hosts.projects_changed(conn, user_id)
         forget_thread_rows(conn, user_id, [pk])
         store.remember(conn, user_id, command_id, fingerprint, True)
     # Wake live workers after the commit so they stop promptly instead of
@@ -1210,7 +1223,7 @@ def delete_schedule_owned_thread(user_id: int, thread_id: int, *, keep_thread_id
         return False
     with store.transaction() as conn:
         row = conn.execute(
-            """SELECT id, schedule_id, public_id FROM chat_threads WHERE id=? AND user_id=?""",
+            """SELECT id, schedule_id, public_id, kind, project_id FROM chat_threads WHERE id=? AND user_id=?""",
             (tid, user_id),
         ).fetchone()
         if row is None or row["schedule_id"] is None:
@@ -1228,6 +1241,10 @@ def delete_schedule_owned_thread(user_id: int, thread_id: int, *, keep_thread_id
         conn.execute("DELETE FROM chat_threads WHERE id=? AND user_id=? AND schedule_id IS NOT NULL", (tid, user_id))
         public = str(row["public_id"]) if "public_id" in row.keys() and row["public_id"] else tid
         store.event(conn, user_id, "thread.deleted", tid, {"id": public})
+        if row["kind"] == "project" and row["project_id"] is not None:
+            from . import hosts
+
+            hosts.projects_changed(conn, user_id)
         forget_thread_rows(conn, user_id, [tid])
     try:
         from . import command_jobs
@@ -1377,6 +1394,10 @@ def fork_thread(user_id: int, thread_id, *, expected_revision=None, command_id=N
         )
         if col("memory_off"):
             conn.execute("UPDATE chat_threads SET memory_off=1 WHERE id=?", (tid,))
+        if col("kind") == "project" and col("project_id") is not None:
+            from . import hosts
+
+            hosts.projects_changed(conn, user_id)
         mapped = {"id", "thread_id", "parent_run_id", "root_run_id", "message_id", "request", "message", "provider_messages"}
         run_columns = _copyable_columns(conn, "chat_runs", runs[0].keys()) if runs else []
         if runs and "provider_messages" in runs[0].keys() and "provider_messages" not in run_columns:
@@ -1629,6 +1650,10 @@ def promote_working_session(user_id: int, thread_id, *, host_id=None, cwd: str =
             agent["bound_cwd"] = proj["remote_path"]
             req["agent"] = agent
             conn.execute("UPDATE chat_runs SET request=? WHERE id=?", (store.dumps(req), run["id"]))
+        # A new project, or one more session in an existing one.
+        from . import hosts
+
+        hosts.projects_changed(conn, user_id)
         return store.publish_thread_view(conn, user_id, pk)
 def move_thread_to_project(user_id: int, thread_id, host_id, project_id, *, expected_revision=None, command_id=None) -> dict | None:
     """Make a chat (or another project's session) a session of this project.

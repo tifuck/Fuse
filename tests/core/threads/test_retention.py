@@ -147,6 +147,17 @@ def test_an_idle_project_archives_with_its_sessions_and_one_used_at_the_cutoff_s
     assert db.fetchone("SELECT archived_by_project FROM chat_threads WHERE title='idle session'")["archived_by_project"] == 1
 
 
+def test_a_project_archived_by_the_sweep_is_announced(fresh_db):
+    uid = make_user()
+    _project(uid, "idle", idle_days=5)
+    cursor = chat_store.cursor(uid)
+
+    retention.sweep_user(uid, PREFS, now=NOW)
+
+    announced = [e["payload"]["projects"] for e in events(uid, cursor) if e["type"] == "projects.updated"]
+    assert [[(p["name"], p["archived"]) for p in projects] for projects in announced] == [[("idle", True)]]
+
+
 def test_an_old_archived_project_deletes_with_its_sessions_and_one_at_the_cutoff_stays(fresh_db):
     uid = make_user()
     _project(uid, "old", idle_days=90, archived_days=31)

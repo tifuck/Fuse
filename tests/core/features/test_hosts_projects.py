@@ -410,3 +410,47 @@ def test_two_saves_of_different_agent_settings_keep_both(uid):
           waiting=lambda info: "user_agent_settings" in info and not info.startswith("SELECT"))
     saved = hosts.settings_for(uid)
     assert (saved["agent_coding"], saved["permission_mode"]) == (True, "read_only")
+
+
+# -- projects.updated: every open page redraws project rows from it ---------
+
+def _announced(uid, cursor):
+    """The project lists projects.updated carried after cursor, oldest first."""
+    return [e["payload"]["projects"] for e in chat_store.events_after(uid, cursor) if e["type"] == "projects.updated"]
+
+
+def test_creating_forking_and_deleting_a_session_announce_the_projects_count(uid):
+    host = make_host(uid)
+    project = hosts.add_project(uid, host, {"name": "api", "remote_path": "/srv/api"})
+    cursor = chat_store.cursor(uid)
+
+    first = session(uid, host, project)
+    copy = chats.fork_thread(uid, first["id"])
+    chats.delete_thread(uid, first["id"])
+    plain = chats.create_thread(uid, model="offline")
+    chats.delete_thread(uid, plain["id"])
+
+    assert [[p["sessions"] for p in projects] for projects in _announced(uid, cursor)] == [[1], [2], [1]]
+    assert chats.list_sidebar_projects(uid)[0]["thread_id"] == copy["id"]
+
+
+def test_promoting_a_chat_into_a_new_project_announces_it(uid):
+    host = make_host(uid)
+    chat = chats.create_thread(uid, model="offline")
+    cursor = chat_store.cursor(uid)
+
+    chats.promote_working_session(uid, chat["id"], host_id=host, cwd="/srv/new", tool="write_file")
+
+    assert [[(p["remote_path"], p["sessions"]) for p in projects] for projects in _announced(uid, cursor)] == [[("/srv/new", 1)]]
+
+
+def test_restoring_a_session_of_an_archived_project_announces_the_project_back(uid):
+    host = make_host(uid)
+    project = hosts.add_project(uid, host, {"name": "api", "remote_path": "/srv/api"})
+    thread = session(uid, host, project)
+    hosts.patch_project(uid, host, project["id"], {"archived": True})
+    cursor = chat_store.cursor(uid)
+
+    chats.update_thread(uid, thread["id"], archived=False)
+
+    assert [[p["archived"] for p in projects] for projects in _announced(uid, cursor)] == [[False]]

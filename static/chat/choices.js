@@ -30,7 +30,7 @@ function swap(fromHtml, toHtml) {
 }
 
 export function createChoices(ctx) {
-  const { net, hint, showFailure, saveBackdrop, upsertLocal } = ctx;
+  const { net, hint, showFailure, saveBackdrop, upsertLocal, acceptProjects } = ctx;
   const specs = new Map();
   // "id:field" -> the option applied from that artifact in this page.
   const applied = new Map();
@@ -121,10 +121,12 @@ export function createChoices(ctx) {
     return project;
   }
 
-  // The saved project, into the list cards read until projects.updated
-  // brings the same.
+  // The saved project, into the list and every row showing it at once;
+  // projects.updated brings the same.
   function keep(project, saved) {
-    if (saved && Number(saved.id) === Number(project.id)) Object.assign(project, { name: saved.name, color: saved.color, logo_url: saved.logo_url });
+    if (!saved || Number(saved.id) !== Number(project.id)) return;
+    Object.assign(project, { name: saved.name, color: saved.color, logo_url: saved.logo_url });
+    acceptProjects(S.projects);
   }
 
   async function patchProject(project, body) {

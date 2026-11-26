@@ -31,10 +31,7 @@ export function createStream(ctx) {
       if (S.contextSaving) await S.contextSaving.catch(() => {});
       apply.acceptContext(payload);
     } else if (event.type === "projects.updated") {
-      if (Array.isArray(payload.projects)) {
-        S.projects = payload.projects;
-        sidebar.renderHistory();
-      }
+      if (Array.isArray(payload.projects)) sidebar.acceptProjects(payload.projects);
     } else if (event.type === "notice.updated" || event.type === "notice.dismissed") {
       notices.receive(event.type, payload, event.thread_id);
     } else if (event.type === "favorites.updated") {
