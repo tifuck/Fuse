@@ -155,6 +155,31 @@ def test_the_precision_floor_filters_quantizations_and_keeps_unpublished_ones_un
     assert openrouter.precision_ok("mxfp8", {"min_precision": "fp8"}) and not openrouter.precision_ok("nvfp4", {"min_precision": "fp8"})
 
 
+def test_sources_saves_the_floor_and_marks_the_providers_it_skips(setup, upstream):
+    from app.config import ROOT
+    from tests.core.auth._support import sign_in, web_client
+
+    sid, (_k, alice, _b) = setup
+    _link(sid, alice, "sk-or-alice-key")
+    asyncio.run(openrouter.fetch_catalog())
+    price = {"prompt": "0.000001", "completion": "0.000002"}
+    endpoints = [{"provider_name": name, "tag": name.lower(), "quantization": q, "pricing": price}
+                 for name, q in (("Cheap", "fp4"), ("Full", "bf16"), ("Closed", "unknown"))]
+    upstream.routes.insert(0, ("GET", "/endpoints", [httpx.Response(200, json={"data": {"endpoints": endpoints}})]))
+    upstream.on("GET", "openrouter.ai/api/v1/providers", httpx.Response(200, json={"data": []}))
+    (ROOT / "data" / "desktop-releases").mkdir(parents=True, exist_ok=True)
+    with web_client() as client:
+        sign_in(client, alice)
+        assert client.post("/sources/openrouter/settings", json={"min_precision": "int2"}).status_code == 400
+        state = client.post("/sources/openrouter/settings", json={"min_precision": "fp8"}).json()
+        assert (state["min_precision"], state["precision_unknown"]) == ("fp8", True)
+        state = client.post("/sources/openrouter/settings", json={"precision_unknown": False}).json()
+        assert (state["min_precision"], state["precision_unknown"]) == ("fp8", False)
+        drawer = client.get("/sources/openrouter/providers", params={"model": "z-ai/glm-5.3"}).json()
+    assert {p["slug"]: p["below_floor"] for p in drawer["providers"]} == {"cheap": True, "full": False, "closed": True}
+    assert openrouter.provider_prefs(alice)["min_precision"] == "fp8"
+
+
 def test_a_mandatory_reasoning_model_drops_a_stale_none_effort(setup, upstream):
     sid, (_k, alice, _b) = setup
     _link(sid, alice, "sk-or-alice-key")

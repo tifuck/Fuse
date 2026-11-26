@@ -71,7 +71,10 @@
 .or-models-head .or-count { margin-left: 0; }
 .or-bulk { display: inline-flex; gap: 0.3rem; }
 /* The model list under a provider: folded to one line until opened. */
-.provider-models > summary { display: flex; align-items: baseline; gap: 0.6rem; min-height: 2.75rem; cursor: pointer; }
+.provider-models > summary { display: flex; align-items: center; gap: 0.6rem; min-height: 2.75rem; margin: -0.5rem 0; cursor: pointer; list-style: none; }
+.provider-models > summary::-webkit-details-marker { display: none; }
+.provider-models > summary::before { content: "▸"; color: var(--mute); font-size: 0.7rem; transition: transform var(--dur-1) var(--ease-snap); }
+.provider-models[open] > summary::before { transform: rotate(90deg); }
 .provider-models > summary b { font-weight: 500; }
 .provider-models[open] > summary { margin-bottom: 0.6rem; }
 
