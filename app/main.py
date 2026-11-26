@@ -65,6 +65,15 @@ async def _maintenance_loop(app: FastAPI):
         except Exception:
             logger.exception("Chat run reaper failed")
         try:
+            from . import command_jobs
+
+            # Every process: live jobs are held by the process that runs them.
+            await asyncio.to_thread(command_jobs.cancel_orphans)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to cancel command jobs of deleted threads")
+        try:
             from . import ssh_pool
 
             await ssh_pool.reap_idle()

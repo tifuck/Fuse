@@ -1180,11 +1180,20 @@ def delete_thread(user_id: int, thread_id, *, expected_revision=None, command_id
     from . import chat_runs
     from .vault import unpin_run
 
+    # The delete has committed: each step below is best effort on its own, so
+    # one failure never skips the rest (command_jobs.cancel_orphans retries
+    # the job cancel) nor reports the delete as failed.
     for run in active:
-        chat_runs.cancel(run["id"])
-        # The row is gone, so finish_run can never unpin it; a stale pin
-        # keeps the vault unlocked past its idle timeout.
-        unpin_run(user_id, run["id"])
+        try:
+            chat_runs.cancel(run["id"])
+        except Exception:
+            logger.exception("Failed to cancel run %s of deleted thread %s", run["id"], pk)
+        try:
+            # The row is gone, so finish_run can never unpin it; a stale pin
+            # keeps the vault unlocked past its idle timeout.
+            unpin_run(user_id, run["id"])
+        except Exception:
+            logger.exception("Failed to unpin run %s of deleted thread %s", run["id"], pk)
     try:
         from . import command_jobs
 

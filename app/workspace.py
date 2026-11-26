@@ -104,6 +104,7 @@ from .workspace_ops.transport import (
     _PGID_DIR,
     _SSH_BEGIN,
     _agent_cwd,
+    _agent_exec_failure,
     _agent_job_output,
     _agent_output_complete,
     _agent_timed_out,
@@ -1135,14 +1136,14 @@ def _outdated_connector(user_id, host_id, feature: str) -> WorkspaceError:
     )
 
 
-async def _agent_call(user_id, host_id, op: str, args: dict, seconds: int = 30, on_chunk=None) -> dict:
+async def _agent_call(user_id, host_id, op: str, args: dict, seconds: int = 30, on_chunk=None, *, enrich: bool = True) -> dict:
     from . import agent_hub
 
     try:
         data = await agent_hub.call(user_id, host_id, op, args, timeout=seconds, on_chunk=on_chunk)
     except agent_hub.AgentError as exc:
         raise WorkspaceError(exc.detail) from exc
-    return _enrich_agent_data(data, op=op)
+    return _enrich_agent_data(data, op=op) if enrich else data
 
 
 def _host_failure(exc: BaseException) -> tuple[str, str] | None:
@@ -1168,9 +1169,76 @@ def _shell_path_arg(path: str) -> str:
     return shlex.quote(path)
 
 
+# readlink -m for Windows PowerShell 5.1: the absolute path is normalized the
+# way Win32 does (.., / and trailing dots, lexically), then walked left to
+# right; a symlink or junction replaces the prefix with its target (relative
+# symlinks against their parent, 40 hops at most) and the first missing
+# component ends the walk with the rest appended verbatim. Anything else
+# (another reparse type, a volume GUID or device target, ~name, an error)
+# prints an empty line: unresolved. Paths arrive as base64 UTF-8 data.
+_WIN_REALPATH_PS = r"""& {
+$fuseHome = $env:USERPROFILE
+function Resolve-FuseReal([string]$p) {
+    if ($p -eq '~') { $p = $fuseHome } elseif ($p -match '^~[\\/]') { $p = $fuseHome + '\' + $p.Substring(2) }
+    $hops = 0
+    try {
+        :walk while ($true) {
+            if ($p -notmatch '^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/?.])') { return $null }
+            $p = [IO.Path]::GetFullPath($p)
+            if ($p -match '^[A-Za-z]:\\') { $root = $p.Substring(0, 2) }
+            elseif ($p -match '^\\\\[^\\?.][^\\]*\\[^\\]+') { $root = $Matches[0] }
+            else { return $null }
+            $parts = @($p.Substring($root.Length).Split('\') | Where-Object { $_ })
+            $cur = $root
+            for ($i = 0; $i -lt $parts.Count; $i++) {
+                $next = $cur + '\' + $parts[$i]
+                try { $attr = [IO.File]::GetAttributes($next) } catch {
+                    $e = $_.Exception
+                    while ($e.InnerException) { $e = $e.InnerException }
+                    if ($e -is [IO.FileNotFoundException] -or $e -is [IO.DirectoryNotFoundException]) {
+                        return $cur + '\' + ($parts[$i..($parts.Count - 1)] -join '\')
+                    }
+                    return $null
+                }
+                if ($attr -band [IO.FileAttributes]::ReparsePoint) {
+                    $hops++
+                    if ($hops -gt 40) { return $null }
+                    $item = Get-Item -LiteralPath $next -Force -ErrorAction Stop
+                    $type = [string]$item.LinkType
+                    if ($type -ne 'SymbolicLink' -and $type -ne 'Junction') { return $null }
+                    $t = [string](@($item.Target)[0])
+                    $t = $t -replace '^(?:\\\\\?\\|\\\?\?\\)(?=[A-Za-z]:\\)', '' -replace '^(?:\\\\\?\\|\\\?\?\\)UNC\\', '\\'
+                    if ($t -match '^(?:[A-Za-z]:\\|\\\\[^\\?.])') { $p = $t }
+                    elseif ($type -eq 'SymbolicLink' -and $t -and $t -notmatch '^[\\/]|^[A-Za-z]:') { $p = $cur + '\' + $t }
+                    else { return $null }
+                    if ($i + 1 -lt $parts.Count) { $p = $p + '\' + ($parts[($i + 1)..($parts.Count - 1)] -join '\') }
+                    continue walk
+                }
+                $cur = $next
+            }
+            if ($parts.Count) { return $cur }
+            return $cur + '\'
+        }
+    } catch { return $null }
+}
+$out = @('__MARKER__')
+foreach ($b in @(__PATHS__)) {
+    try { $r = [string](Resolve-FuseReal ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)))) } catch { $r = '' }
+    if ($r -match '[\r\n]') { $r = '' }
+    $out += $r
+}
+[Console]::Out.Write(($out -join "`n") + "`n")
+[Console]::Out.Flush()
+}
+"""
+
+
 async def _realpaths(user_id, host_id, paths: list[str]) -> list[str | None]:
     """Where each path really points on the host (symlinks followed), one
     round trip; None where it cannot be resolved. Never raises."""
+    from . import db
+    from .permissions import expand_temp
+
     marker = "__fuse_realpath__"
     script = f"printf '%s\\n' {marker}; " + "; ".join(
         # -m resolves through missing components (a write's new dirs) so a
@@ -1179,8 +1247,14 @@ async def _realpaths(user_id, host_id, paths: list[str]) -> list[str | None]:
         for p in paths
     )
     try:
+        row = await asyncio.to_thread(
+            db.fetchone, "SELECT agent_os FROM user_hosts WHERE id=? AND user_id=?", (host_id, user_id))
+        if row and _is_windows_row(row):
+            data = ",".join(
+                "'" + base64.b64encode(expand_temp(p, True).encode("utf-8")).decode("ascii") + "'" for p in paths)
+            script = _WIN_REALPATH_PS.replace("__MARKER__", marker).replace("__PATHS__", data)
         res = await _run_remote(user_id, host_id, script, "", 10, rate=False, login=False)
-        out = str(res.stdout or "")
+        out = str(res.stdout or "").replace("\r\n", "\n")
         # Login shells may print banners first; only what follows the marker counts.
         lines = out.split(marker + "\n", 1)[1].split("\n") if marker + "\n" in out else []
     except Exception:
@@ -1292,7 +1366,7 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
 
         try:
             data = await _agent_call(
-                user_id, host_id, "exec_stream", payload, kill_ms / 1000 + 10, on_chunk=on_chunk,
+                user_id, host_id, "exec_stream", payload, kill_ms / 1000 + 10, on_chunk=on_chunk, enrich=False,
             )
         except asyncio.CancelledError:
             # Stopped (kill, background limit): keep the stderr held back so far.
@@ -1301,7 +1375,7 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
             raise
         if not data.get("ok") and str(data.get("error") or "").strip() == "unknown op":
             # Pre-exec_stream connector: buffered result only, no live chunks.
-            data = await _agent_call(user_id, host_id, "exec", payload, kill_ms / 1000 + 10)
+            data = await _agent_call(user_id, host_id, "exec", payload, kill_ms / 1000 + 10, enrich=False)
         res = _AgentExec(data)
         # A streamed result's err carries only the connector's own notes (clip
         # marker, signal death): append them to the streamed stderr, never
@@ -1319,8 +1393,9 @@ def _make_agent_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int
             # Connectors flag deadline kills so a killed command is not
             # misreported as a completed exit-1 run (parity with SSH).
             raise command_jobs.CommandTimedOut(termination_confirmed=data.get("termination_confirmed") is True)
-        if not data.get("ok") and not (res.stdout or res.stderr or err_parts) and data.get("error") in ("agent is busy", "exec failed", "cancelled"):
-            raise WorkspaceError("connector could not execute command: " + data["error"])
+        failure = _agent_exec_failure(data)
+        if failure and not (streamed["out"] or err_parts):
+            raise WorkspaceError("connector could not execute command: " + failure)
         return _ExecResult(res.exit_status, "")
 
     return runner
@@ -1424,26 +1499,119 @@ def _make_ssh_runner(user_id, host_id, command: str, cwd: str, timeout_ms: int, 
     return runner
 
 
+_TEMP_UNSAFE = "fuse-temp-unsafe:"
+
+
+# Rights that let another account change a folder or what is in it: create
+# files/folders, delete children, delete, change permissions, take ownership,
+# GENERIC_ALL, GENERIC_WRITE (Write, Modify and FullControl all include some).
+_WIN_WRITE_RIGHTS = 0x500D0046
+
+# One round trip, Windows PowerShell 5.1: missing folders are created with a
+# protected ACL (full control for SYSTEM, Administrators and this identity
+# only, set at creation), then every folder from the Fuse temp base down must
+# be a real folder (no reparse point) owned by one of those three and grant
+# no write-type right to anyone else. Inherit-only ACEs grant nothing here.
+_WIN_TEMP_MKDIR_PS = r"""& {
+$ErrorActionPreference = 'Stop'
+$dirs = @(__DIRS__)
+$me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$ok = @($me, 'S-1-5-18', 'S-1-5-32-544')
+$sec = New-Object Security.AccessControl.DirectorySecurity
+$sec.SetAccessRuleProtection($true, $false)
+foreach ($s in $ok) {
+    $sid = New-Object Security.Principal.SecurityIdentifier($s)
+    $sec.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+}
+foreach ($d in $dirs) {
+    if (-not (Test-Path -LiteralPath $d)) { [void][IO.Directory]::CreateDirectory($d, $sec) }
+    $bad = $true
+    try {
+        $item = Get-Item -LiteralPath $d -Force
+        $acl = Get-Acl -LiteralPath $d
+        $bad = -not $item.PSIsContainer -or ([int]($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) -or
+            ($ok -notcontains $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value)
+        foreach ($r in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+            if ($r.AccessControlType -eq 'Allow' -and [int]($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -eq 0 -and
+                ($ok -notcontains $r.IdentityReference.Value) -and ([int64]$r.FileSystemRights -band __RIGHTS__) -ne 0) { $bad = $true }
+        }
+    } catch { $bad = $true }
+    if ($bad) { Write-Output ('__UNSAFE__' + $d); return }
+}
+}"""
+
+
+def _win_fuse_temp_dirs(path: str) -> list[str]:
+    """The Fuse temp base (...\\Temp\\fuse) and each folder below it down to
+    `path`, which in_fuse_temp(path, True) has accepted."""
+    from .permissions import _WIN_TEMP_ABS, WIN_TEMP_HOME, expand_temp
+
+    full = ntpath.normpath(expand_temp(str(path), True).replace("/", "\\"))
+    low, home = full.lower(), WIN_TEMP_HOME.lower()
+    cut = len(home) if low == home or low.startswith(home + "\\") else _WIN_TEMP_ABS.match(low).end()
+    prefix, parts = full[:cut].rstrip("\\"), [p for p in full[cut:].split("\\") if p]
+    return [prefix + "\\" + "\\".join(parts[:i + 1]) for i in range(len(parts))]
+
+
+def _fuse_temp_mkdir_cmd(path: str, windows: bool) -> str:
+    """mkdir -p for a folder in the Fuse temp dir. New folders are private
+    (700; a protected ACL on Windows), and the Fuse temp base and every
+    folder below it on the way to `path` must be a real directory of this
+    account that no one else may write to, or another local user could swap
+    files Fuse put there (prints _TEMP_UNSAFE and the folder). On POSIX /tmp
+    is shared. On Windows %TEMP%\\fuse is rewritten to the profile's
+    AppData\\Local\\Temp, private to its account, but an elevated connector
+    runs as SYSTEM and C:\\Windows\\Temp (accepted as temp too) lets any user
+    create folders."""
+    if windows:
+        dirs = ", ".join(f"({_ps_path_expr(d)})" for d in _win_fuse_temp_dirs(path))
+        return (_WIN_TEMP_MKDIR_PS.replace("__DIRS__", dirs).replace("__RIGHTS__", hex(_WIN_WRITE_RIGHTS))
+                .replace("__UNSAFE__", _TEMP_UNSAFE))
+    parts = posixpath.normpath(path).split("/")[2:]  # "/tmp/fuse/a" -> fuse, a
+    dirs = " ".join(shlex.quote("/tmp/" + "/".join(parts[:i + 1])) for i in range(len(parts)))
+    return (
+        f"umask 077 && mkdir -p -- {shlex.quote(posixpath.normpath(path))} || exit 1\n"
+        "u=$(id -u)\n"
+        f"for d in {dirs}; do\n"
+        '  set -- $(ls -ldn -- "$d" 2>/dev/null)\n'
+        '  case "$1" in d????w*|d???????w*) ok=0 ;; d*) ok=1 ;; *) ok=0 ;; esac\n'
+        f'  [ "$ok" = 1 ] && [ "$3" = "$u" ] || {{ echo "{_TEMP_UNSAFE}$d"; exit 3; }}\n'
+        "done\n"
+    )
+
+
+async def _make_fuse_temp_dir(user_id, host_id, path: str, *, windows: bool) -> bool:
+    """Create `path` in the Fuse temp dir with _fuse_temp_mkdir_cmd. False
+    when it could not be made; raises WorkspaceError when a folder on the way
+    is not this account's own."""
+    try:
+        res = await _tool_exec(user_id, host_id, _fuse_temp_mkdir_cmd(path, windows), "~", 8)
+    except Exception:
+        logger.debug("could not create temp dir %s on host %s", path, host_id, exc_info=True)
+        return False
+    out = res.get("out") or ""
+    if _TEMP_UNSAFE in out:
+        bad = out.split(_TEMP_UNSAFE, 1)[1].split("\n", 1)[0].strip()
+        raise WorkspaceError(
+            f"refusing to use the Fuse temp dir: {bad} is not a directory owned by this account "
+            "that only it can write to (another account may control it); remove or fix it, then retry"
+        )
+    return res.get("exit") == 0
+
+
 async def _ensure_fuse_temp(user_id, host_id, cwd: str, *, windows: bool) -> None:
     """Create a command's cwd when it is in the Fuse temp dir, where the prompt
     sends scratch work (connectors fail a missing cwd before the command runs).
 
     Checked on every command, never remembered: a reboot or a temp cleaner
     empties it under a live chat. Best effort: if this fails, the command's
-    own cwd error says why.
+    own cwd error says why. A temp dir another account controls is refused.
     """
     from .permissions import in_fuse_temp
 
     if not in_fuse_temp(cwd, windows):
         return
-    if windows:
-        cmd = f"New-Item -ItemType Directory -Force -Path ({_ps_path_expr(cwd)}) | Out-Null"
-    else:
-        cmd = f"mkdir -p -- {_quote_host_path(cwd)}"
-    try:
-        await _tool_exec(user_id, host_id, cmd, "~", 8)
-    except Exception:
-        logger.debug("could not create temp cwd %s on host %s", cwd, host_id, exc_info=True)
+    await _make_fuse_temp_dir(user_id, host_id, cwd, windows=windows)
 
 
 _LIVE_OUTPUT_S = 0.5
@@ -1632,8 +1800,9 @@ def _make_monitor_agent_runner(user_id, host_id, command: str, cwd: str, timeout
         incomplete(not _agent_output_complete(data))
         if _agent_timed_out(data):
             raise command_jobs.CommandTimedOut(termination_confirmed=data.get("termination_confirmed") is True)
-        if not data.get("ok") and not (leftover_out or leftover_err) and data.get("error") in ("agent is busy", "exec failed", "cancelled", "unknown op"):
-            raise WorkspaceError("connector could not execute command: " + data["error"])
+        failure = _agent_exec_failure(data)
+        if failure:
+            raise WorkspaceError("connector could not execute command: " + failure)
         return _ExecResult(res.exit_status, "")
 
     return runner
@@ -3063,6 +3232,11 @@ def _serialize_file_mutation(fn):
 
 
 async def _agent_mkdir_parent(user_id, host_id, path: str, *, windows: bool) -> bool:
+    from .permissions import in_fuse_temp
+
+    parent = (ntpath if windows else posixpath).dirname(path)
+    if in_fuse_temp(parent, windows):
+        return await _make_fuse_temp_dir(user_id, host_id, parent, windows=windows)
     if windows:
         cmd = (
             f"$p = {_ps_path_expr(path)}\n"
@@ -3161,11 +3335,16 @@ async def _write(user_id, host_id, alias, args, root, *, windows: bool = False):
         except WorkspaceError as exc:
             if attrs is not None or not exc.detail.startswith("parent directory"):
                 raise
+            from .permissions import in_fuse_temp
+
             parent = posixpath.dirname(path)
-            try:
-                await sftp.makedirs(parent, exist_ok=True)
-            except Exception as mk_exc:
-                raise _sftp_error(mk_exc, parent, "create directory") from mk_exc
+            if not windows and in_fuse_temp(parent, False):
+                await _make_fuse_temp_dir(user_id, host_id, parent, windows=False)
+            else:
+                try:
+                    await sftp.makedirs(parent, exist_ok=True)
+                except Exception as mk_exc:
+                    raise _sftp_error(mk_exc, parent, "create directory") from mk_exc
             await _sftp_atomic_write(sftp, path, data)
     receipt = _write_receipt(path, size, existed=attrs is not None, old_size=getattr(attrs, "size", None))
     return _label(alias, receipt), {"name": "write_file", "status": "done", "host": alias, "path": path}

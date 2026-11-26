@@ -13,7 +13,7 @@ import time
 
 import httpx
 
-from ..proxy import usage_from_obj
+from ..proxy import UpstreamProtocolError, usage_from_obj
 from . import http_pool
 from .base import THINKING_MARK
 
@@ -22,10 +22,6 @@ logger = logging.getLogger(__name__)
 
 def _sse(obj: dict) -> bytes:
     return f"data: {json.dumps(obj, separators=(',', ':'))}\n\n".encode()
-
-
-class UpstreamProtocolError(ValueError):
-    pass
 
 
 async def _error_body(resp: httpx.Response) -> dict:

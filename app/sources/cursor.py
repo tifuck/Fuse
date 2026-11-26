@@ -346,6 +346,8 @@ def store_tokens(source_id: int, access: str, refresh: str, donated_by: int | No
 
 
 _KEY_REJECTED = "Cursor rejected that API key."
+# A 403 can be a WAF or region block as well as a refused key: never a strike.
+_KEY_REFUSED = "Cursor refused that API key (HTTP 403)."
 
 
 async def exchange_api_key(key: str) -> tuple[dict | None, str]:
@@ -358,8 +360,10 @@ async def exchange_api_key(key: str) -> tuple[dict | None, str]:
             )
         except httpx.HTTPError:
             return None, "Could not reach Cursor."
-    if r.status_code in (401, 403):
+    if r.status_code == 401:
         return None, _KEY_REJECTED
+    if r.status_code == 403:
+        return None, _KEY_REFUSED
     if r.status_code != 200:
         return None, f"Cursor answered HTTP {r.status_code}."
     try:
@@ -398,10 +402,12 @@ async def _refresh_one_unlocked(cred) -> bool:
         # is always safe, so it is not gated on OAuth refresh ownership.
         tokens, err = await exchange_api_key(extra["api_key"])
         if tokens is None:
-            if err == _KEY_REJECTED:
-                disable_credential(row["id"], extra=row["extra"])
-            else:
+            # A rejected key is disabled on its second strike, as in chat;
+            # auth_failure_confirmed cools it on the first.
+            if err != _KEY_REJECTED:
                 note_failure(row["id"], cooldown_seconds=30)
+            elif auth_failure_confirmed(row["id"]):
+                disable_credential(row["id"], extra=row["extra"])
             return False
         access, refresh = tokens["access_token"], tokens["refresh_token"] or extra.get("refresh_token", "")
     else:

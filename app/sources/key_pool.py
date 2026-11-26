@@ -372,6 +372,18 @@ def classify_429(body_text: str) -> str:
     return "transient"
 
 
+async def _error_body(response: httpx.Response, attempts: list[dict]) -> bytes:
+    """The capped body of an error response, which is always closed. A failed
+    read carries the attempts so far, which the caller still bills."""
+    try:
+        return await http_pool.read_error_body(response)
+    except Exception as e:
+        e.fuse_attempts = attempts
+        raise
+    finally:
+        await response.aclose()
+
+
 # ---------------------------------------------------------------------------
 # KeyPool — smart rotation with rest windows and cooldown tiers
 # ---------------------------------------------------------------------------
@@ -619,6 +631,9 @@ class KeyPool:
         Only definite connection-establishment failures and credential-specific
         authentication rejections rotate. HTTP 5xx, rate limits, and read
         failures are returned without replaying a possibly accepted generation.
+
+        An exception raised after earlier rotations (429s, rejected keys)
+        carries them as `fuse_attempts`, so the caller can still bill them.
         """
         tried: set[str] = set()
         attempts: list[dict] = []
@@ -681,6 +696,9 @@ class KeyPool:
                 last_connect_error = e
                 logger.warning("Connection error key=%s: %s", key_state.masked(), type(e).__name__)
                 continue
+            except Exception as e:
+                e.fuse_attempts = attempts
+                raise
 
             status = response.status_code
 
@@ -696,8 +714,7 @@ class KeyPool:
             if status == 404:
                 # Model not found — not a key problem. Treat as success for rotation.
                 key_state.mark_success(self.rest_seconds)
-                body_text = (await http_pool.read_error_body(response)).decode(response.encoding or "utf-8", errors="replace")
-                await response.aclose()
+                body_text = (await _error_body(response, attempts)).decode(response.encoding or "utf-8", errors="replace")
                 fake = httpx.Response(
                     status, content=body_text.encode(),
                     headers=response.headers,
@@ -708,10 +725,9 @@ class KeyPool:
                 return fake, key_state, attempt > 0
 
             # Error status — read body for classification + logging
-            error_bytes = await http_pool.read_error_body(response)
+            error_bytes = await _error_body(response, attempts)
             error_text = error_bytes.decode(response.encoding or "utf-8", errors="replace")
             headers = response.headers
-            await response.aclose()
 
             self._handle_error_status(status, headers, error_text, key_state, model=model)
             self._save_state_dirty = True

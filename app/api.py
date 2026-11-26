@@ -18,7 +18,7 @@ from . import accounts, chat_images, db, model_caps, opencode as opencode_mod, p
 from .config import settings
 from .database_errors import is_lock_conflict
 from .providers.access import Access
-from .proxy import STREAM_STALLED, merge_usage, scrub_secrets, usage_from_obj
+from .proxy import STREAM_STALLED, UPSTREAM_STREAM_ERRORS, merge_usage, scrub_secrets, usage_from_obj
 from .security import client_ip, limiter
 from .sources import (
     POOL_TYPES,
@@ -436,7 +436,7 @@ async def _tap(
         if not saw_done:
             request_status = "cancelled"
         raise
-    except Exception as exc:
+    except UPSTREAM_STREAM_ERRORS as exc:
         request_status = "failed"
         if not saw_done:
             error = {
@@ -444,6 +444,24 @@ async def _tap(
                     "message": f"upstream stream failed ({type(exc).__name__})",
                     "type": "api_error",
                     "code": 502,
+                }
+            }
+            yield f"data: {json.dumps(error, separators=(',', ':'))}\n\n".encode()
+            yield b"data: [DONE]\n\n"
+    except Exception as exc:
+        # Fuse's own bug (a source adapter, this wrapper): the client still
+        # gets a terminal error frame, worded so the resume policy never
+        # retries it as an upstream failure.
+        logger.exception("Stream processing failed")
+        request_status = "failed"
+        if not saw_done:
+            error = {
+                "error": {
+                    "message": f"stream processing failed ({type(exc).__name__})",
+                    "type": "server_error",
+                    "code": 500,
+                    # Already classified: provider_errors.annotate keeps it as is.
+                    "fuse_kind": "internal",
                 }
             }
             yield f"data: {json.dumps(error, separators=(',', ':'))}\n\n".encode()

@@ -241,7 +241,9 @@ async def ensure(user_id: int, host_id: int, root: str, *, force: bool = False) 
             alias, files = await workspace.read_env_files(
                 user_id, host_id, root, pick=pick_files, depth=SCAN_DEPTH, max_chars=MAX_FILE_CHARS, known=known)
         except Exception as exc:
+            # Nothing was read: the next round tries again instead of waiting out _RESCAN_AFTER_S.
             logger.info("Secret scan skipped for host %s: %s", host_id, str(exc)[:200])
+            _last.pop(key, None)
             return 0
         found: list[Found] = []
         for path, text in files:

@@ -10,7 +10,6 @@ import math
 import re
 import time
 
-import httpx
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 
@@ -18,7 +17,7 @@ from . import api, artifacts, chats, context_compact as ctxmod, context_meter, p
 from .config import settings
 from .chat_generation import inbox, metadata, policy, tool_runner
 from .chat_tools import execute_tool, openai_tools, parse_tool_names
-from .proxy import merge_usage, usage_from_obj
+from .proxy import UPSTREAM_STREAM_ERRORS, merge_usage, usage_from_obj
 from .sources import POOL_TYPES, pool_badge
 
 from .chat_prompts import (
@@ -126,12 +125,6 @@ from .chat_generation.messages import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Errors a provider stream raises for upstream/transport faults (httpx and
-# socket errors, idle timeouts, malformed upstream frames). Only these are
-# resumed; other exceptions mid-round are local bugs.
-_UPSTREAM_STREAM_ERRORS = (httpx.HTTPError, OSError, EOFError, ValueError)
-
 
 MAX_COMPLETIONS = 6
 CHECKPOINT_RETRY_DELAYS = (0.5, 2.0)
@@ -1606,7 +1599,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                 # Transport/protocol errors are the provider's; anything else
                 # (TypeError, RecursionError, ...) is a Fuse bug that must not
                 # be retried as paid rounds or blamed on the provider.
-                upstream_fault = isinstance(exc, _UPSTREAM_STREAM_ERRORS)
+                upstream_fault = isinstance(exc, UPSTREAM_STREAM_ERRORS)
                 if upstream_fault:
                     logger.warning("Dashboard upstream stream failed: %s", type(exc).__name__)
                     err_msg = f"upstream stream failed ({type(exc).__name__})"

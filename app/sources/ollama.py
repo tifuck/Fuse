@@ -8,7 +8,7 @@ import httpx
 
 from .. import accounts, context_meter, db, model_caps
 from ..config import ROOT
-from ..proxy import UsageStream, usage_from_obj
+from ..proxy import UpstreamProtocolError, UsageStream, usage_from_obj
 from .base import ChatResult
 from .key_pool import KeyPool, NoAvailableKeyError
 from . import http_pool, ollama_access
@@ -616,14 +616,18 @@ class OllamaSource:
                 status=504,
                 body={"error": {"message": f"upstream timeout ({type(exc).__name__})"}},
                 model=payload["model"],
+                attempts=own_attempts + getattr(exc, "fuse_attempts", []),
             )
         except NoAvailableKeyError:
-            return _no_key_result(self.pool, payload["model"])
+            result = _no_key_result(self.pool, payload["model"])
+            result.attempts = own_attempts
+            return result
         except (httpx.TransportError, ConnectionError) as exc:
             return ChatResult(
                 status=502,
                 body={"error": {"message": f"upstream transport failure ({type(exc).__name__})"}},
                 model=payload["model"],
+                attempts=own_attempts + getattr(exc, "fuse_attempts", []),
             )
         stream_returned = False
         try:
@@ -636,16 +640,22 @@ class OllamaSource:
                 safe_headers = {}
                 if response.headers.get("retry-after"):
                     safe_headers["Retry-After"] = response.headers["retry-after"][:128]
+                # An own key's error arrives unread (streamed); the pool's is already read.
                 try:
-                    err = response.json()
-                except Exception:
+                    raw = await http_pool.read_error_body(response)
+                except httpx.HTTPError:
+                    raw = b""
+                finally:
+                    await response.aclose()
+                text = raw.decode(response.encoding or "utf-8", errors="replace")
+                try:
+                    err = json.loads(text)
+                except ValueError:
                     err = {"error": {"message": "upstream returned a non-JSON error"}}
                 if not isinstance(err, dict):
                     err = {"error": {"message": "upstream returned an invalid error schema"}}
-                text = response.text if hasattr(response, "text") else json.dumps(err)
                 retry_attempts = own_attempts + (response.extensions.get("fuse_attempts") or [])
-                await response.aclose()
-                if ollama_access.is_gated_error(response.status_code, text if isinstance(text, str) else str(err)):
+                if ollama_access.is_gated_error(response.status_code, text):
                     if shared:
                         ollama_access.note(
                             self.source_id, model, ollama_access.GATED, status=response.status_code, error=str(err)[:200]
@@ -768,9 +778,9 @@ async def _stream(resp: httpx.Response, model: str, client: httpx.AsyncClient | 
             try:
                 chunk = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ValueError("upstream sent malformed stream JSON") from exc
+                raise UpstreamProtocolError("upstream sent malformed stream JSON") from exc
             if not isinstance(chunk, dict):
-                raise ValueError("upstream sent an invalid stream object")
+                raise UpstreamProtocolError("upstream sent an invalid stream object")
             if chunk.get("error"):
                 # Pass Ollama's own words on: a generic error reads as an
                 # interruption and is retried even when it cannot succeed.

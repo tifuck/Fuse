@@ -110,10 +110,11 @@ _TERMINAL_MESSAGE = re.compile(
 
 
 # api.invoke_chat wraps every source-adapter exception in this exact 502
-# message. Those are local bugs (serialization, TypeError), not upstream
+# message, and api._tap one raised mid-stream in the 500 "stream processing
+# failed (X)". Those are local bugs (serialization, TypeError), not upstream
 # conditions: retrying the identical payload fails identically and only
 # burns the resume budget and backoff.
-_LOCAL_ADAPTER_FAILURE = re.compile(r"^upstream request failed \([A-Za-z_][\w.]*\)$")
+_LOCAL_ADAPTER_FAILURE = re.compile(r"^(?:upstream request|stream processing) failed \([A-Za-z_][\w.]*\)$")
 
 
 _capability: dict[tuple[str, str], tuple[float, str]] = {}

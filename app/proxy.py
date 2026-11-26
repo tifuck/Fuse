@@ -15,6 +15,16 @@ _MAX_USAGE_VALUE = 9_000_000_000_000_000
 # the request failed, it was not cancelled by the client.
 STREAM_STALLED = "fuse: upstream stream stalled"
 
+
+class UpstreamProtocolError(ValueError):
+    """An upstream stream broke its protocol: a malformed, invalid or oversized frame."""
+
+
+# What a provider stream raises for a fault of the upstream or the network:
+# transport and socket errors, timeouts, a cut stream, a broken frame. Anything
+# else raised while streaming is Fuse's own bug, never a resumable upstream fault.
+UPSTREAM_STREAM_ERRORS = (httpx.HTTPError, OSError, EOFError, UpstreamProtocolError)
+
 _SECRET_PATTERNS = (
     (re.compile(r"sk-[A-Za-z0-9_-]{8,}"), "sk-***"),
     (re.compile(r"(?i:bearer)\s+[A-Za-z0-9._~+/=-]{8,}"), "Bearer ***"),
@@ -436,10 +446,10 @@ async def openai_chat(
                     obj = json.loads(data)
                 except json.JSONDecodeError as exc:
                     collected["stream_status"] = "failed"
-                    raise ValueError("upstream sent malformed SSE JSON") from exc
+                    raise UpstreamProtocolError("upstream sent malformed SSE JSON") from exc
                 if not isinstance(obj, dict):
                     collected["stream_status"] = "failed"
-                    raise ValueError("upstream sent an invalid SSE object")
+                    raise UpstreamProtocolError("upstream sent an invalid SSE object")
                 if obj.get("error"):
                     collected["stream_status"] = "failed"
                 # Only frames that carry a usage dict update the counts; a

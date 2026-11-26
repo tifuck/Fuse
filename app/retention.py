@@ -510,7 +510,7 @@ def _strip_history(raw: str, old_messages: list, new_messages: list) -> str | No
 
 def _purge_thread_media(user_id: int, thread: dict) -> int | None:
     """One archived or idle thread's media, gone. The number of stored images deleted, or
-    None when the thread moved since the sweep read it."""
+    None when the thread moved since the sweep read it or its transcript is unreadable."""
     from . import chat_images, chat_tx
 
     tid = thread["id"]
@@ -528,7 +528,11 @@ def _purge_thread_media(user_id: int, thread: dict) -> int | None:
         try:
             messages = json.loads(row["messages"] or "[]")
         except (TypeError, ValueError):
-            messages = []
+            messages = None
+        if not isinstance(messages, list):
+            # Its images may be all that is left of it: never delete them blind.
+            logger.warning("media purge skipped for thread %s: unreadable transcript", tid)
+            return None
         stripped = chat_images.strip_media(messages)
         history = _strip_history(row["retained_history"], messages, stripped)
         shas = [r["sha"] for r in conn.execute("SELECT sha FROM chat_images WHERE thread_id=?", (tid,)).fetchall()]

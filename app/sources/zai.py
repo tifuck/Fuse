@@ -620,7 +620,6 @@ class ZaiSource:
             tried.add(int(cred["id"]))
             await asyncio.to_thread(note_pool_invoke, cred["id"])
             payload = pool_policy.lent_payload(prepared, cred, user_id)
-            reserve(cred["id"])
             key = extra.get("api_key") or accounts.cred_secret(cred)
             region = extra.get("region") or "global"
             if region not in _REGIONS:
@@ -629,6 +628,7 @@ class ZaiSource:
             client = http_pool.client(httpx.Timeout(300.0, connect=15.0))
             stream_reserved = False
             try:
+                reserve(cred["id"])
                 status, obj, stream, usage, response_headers = await openai_chat(
                     client,
                     base + "/chat/completions",
