@@ -860,6 +860,72 @@ def _seed(uid: int) -> list[str]:
     return titles
 
 
+# Sources: made-up keys on three providers, so /sources has panes to draw: a
+# Z.AI plan (a subscription pool), NanoGPT (plan and pay-as-you-go models)
+# and OpenRouter (model list, provider pins, privacy and precision routing).
+# Every reading is stamped far in the future, so the usage walk and refresh
+# sweeps never send these keys anywhere; sharing is private, so no other dev
+# account's request lands on them. A reseed puts readings and choices back.
+QA_READ_AT = "2099-01-01T00:00:00Z"
+QA_OPENROUTER_ON = ("deepseek/deepseek-chat-v3.1", "z-ai/glm-4.6", "qwen/qwen3-coder", "moonshotai/kimi-k2-0905",
+                    "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro")
+
+
+def _credential(source_id: int, uid: int, label: str, secret: str, extra: dict) -> int:
+    from app import accounts, db
+    from app.crypto import encrypt
+
+    row = db.fetchone("SELECT id FROM credentials WHERE source_id=? AND donated_by=? ORDER BY id LIMIT 1", (source_id, uid))
+    if row is None:
+        return accounts.add_credential(source_id, label, secret, extra=extra, donated_by=uid)
+    db.execute("UPDATE credentials SET disabled=0, label=?, secret=?, extra=? WHERE id=?",
+               (label, encrypt(secret), encrypt(json.dumps(extra)), row["id"]))
+    return int(row["id"])
+
+
+def _sources(uid: int) -> list[str]:
+    from app.providers import model_prefs
+    from app.sources import nanogpt, openrouter, pool_policy, zai
+
+    read = {"fetched_at": QA_READ_AT, "checked_at": QA_READ_AT, "last_error": ""}
+    day = int((datetime.now(timezone.utc) + timedelta(hours=9)).timestamp() * 1000)
+    week = int((datetime.now(timezone.utc) + timedelta(days=4)).timestamp() * 1000)
+
+    _credential(zai.ensure_zai_source(), uid, "QA Z.AI plan", "qa-fixture-zai-key-0000000000", {
+        "api_key": "qa-fixture-zai-key-0000000000", "region": "global",
+        "billing": {**zai.parse_quota_payload({"level": "pro", "fiveHourPercent": 34, "weeklyPercent": 12}), **read}})
+    _credential(nanogpt.ensure_nanogpt_source(), uid, "QA NanoGPT", "sk-nano-qa-fixture-000000000000", {
+        "auth_kind": "api", "account_id": "",
+        "billing": {**nanogpt.parse_usage({"active": True, "state": "active",
+                                            "dailyInputTokens": {"percentUsed": 0.18, "resetAt": day},
+                                            "weeklyInputTokens": {"percentUsed": 0.41, "resetAt": week},
+                                            "routing": {"paidSpendPolicyAllowsBalance": True}}),
+                    "prepaid_cents": 1240, **read}})
+    secret = "sk-or-v1-qa-fixture-000000000000"
+    _credential(openrouter.ensure_openrouter_source(), uid, "sk-or-v1-qa0...000", secret, {
+        "api_key": secret, "role": "user",
+        "key_info": {"label": "sk-or-v1-qa0...000", "usage": 4.82, "limit": 25, "limit_remaining": 20.18,
+                     "is_free_tier": False, **read}})
+    for kind in ("zai", "nanogpt"):
+        pool_policy.set_user_pref(uid, kind, share="private", use="mine")
+
+    openrouter.load_saved()
+    by_id = (openrouter.cached_catalog() or {}).get("by_id") or {}
+    chosen = [mid for mid in QA_OPENROUTER_ON if mid in by_id] or [mid for mid, rec in by_id.items() if not rec.get("free")][:6]
+    model_prefs.replace(uid, "openrouter", groups_on={"free": True, "paid": False},
+                        models={openrouter.public_id(mid): True for mid in chosen})
+    openrouter.set_privacy(uid, data_collection_deny=True, zdr=False)
+    openrouter.set_precision(uid, floor="fp8", allow_unknown=True)
+    for mid in chosen[:2]:
+        openrouter.set_model_providers(uid, mid, ["deepinfra", "novita"])
+
+    nanogpt.load_saved()
+    paid = [mid for mid, rec in ((nanogpt.cached_catalog() or {}).get("by_id") or {}).items() if not rec.get("subscription")]
+    model_prefs.replace(uid, "nanogpt", groups_on={"subscription": True, "paid": False},
+                        models={nanogpt.public_id(mid): True for mid in paid[:3]})
+    return ["Z.AI", "NanoGPT", f"OpenRouter ({len(chosen)} paid models on)"]
+
+
 def _account() -> int:
     """The QA user's id, created on first run and kept an admin, so the QA
     browser can open the admin pages (it aborts every write). A lost password
@@ -892,8 +958,10 @@ def main() -> int:
         return 1
     uid = _account()
     titles = _seed(uid)
+    linked = _sources(uid)
     print(f"QA account {EMAIL} (user {uid}); login kept in {CREDS.relative_to(ROOT)}")
     print("threads: " + ", ".join(titles))
+    print("sources: " + ", ".join(linked))
     return 0
 
 

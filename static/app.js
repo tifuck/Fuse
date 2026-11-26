@@ -141,8 +141,9 @@ window.fuseAnnounce = function fuseAnnounce(text, assertive) {
 // Model lists on Sources, one per provider: each row turns one model on or
 // off for this user, a group switch or All on/off sets every model of the
 // group (rows stay editable after), all through data-prefs
-// (/sources/models/<provider>). OpenRouter and NanoGPT add provider pins and
-// privacy switches under their own data-endpoint.
+// (/sources/models/<provider>). OpenRouter and NanoGPT add provider pins, and
+// OpenRouter its routing (privacy switches, precision floor), under their own
+// data-endpoint.
 document.querySelectorAll("[data-or-models]").forEach(function modelListSettings(root) {
   const scope = root.closest("[data-or-scope]") || root;
   const base = root.dataset.endpoint || "/sources/openrouter";
@@ -190,7 +191,8 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
           (view === "on" && isOn(row)) ||
           (view === "off" && !isOn(row)) ||
           (view === "pinned" && Number(row.dataset.pinned) > 0) ||
-          (view === "free" && row.dataset.free === "1"));
+          (view === "free" && row.dataset.free === "1") ||
+          (view === "paid" && row.dataset.free === "0"));
       row.hidden = !match;
       if (match) shown += 1;
     });
@@ -204,24 +206,54 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
     row.classList.toggle("is-on", on);
   }
 
-  // Privacy switches (OpenRouter): account settings, not model choices.
+  // Routing (OpenRouter): account settings, not model choices. Switches send
+  // their state; the precision buttons send their value ("" is any).
   if (settings) {
-    settings.addEventListener("change", async (event) => {
-      const box = event.target.closest("[data-or-setting]");
-      if (!box) return;
-      const key = box.dataset.orSetting;
-      const want = box.checked;
-      box.disabled = true;
+    const controls = () => Array.from(settings.querySelectorAll("[data-or-setting]"));
+    const read = () => {
+      const state = {};
+      controls().forEach((el) => {
+        if (el.type === "checkbox") state[el.dataset.orSetting] = el.checked;
+        else if (el.getAttribute("aria-pressed") === "true") state[el.dataset.orSetting] = el.value;
+      });
+      return state;
+    };
+    const show = (state) => {
+      controls().forEach((el) => {
+        const key = el.dataset.orSetting;
+        if (!(key in state)) return;
+        if (el.type === "checkbox") {
+          el.checked = Boolean(state[key]);
+        } else {
+          const on = state[key] === el.value;
+          el.classList.toggle("on", on);
+          el.setAttribute("aria-pressed", on ? "true" : "false");
+        }
+      });
+      const unknown = settings.querySelector('[data-or-setting="precision_unknown"]');
+      if (unknown) unknown.disabled = !state.min_precision;
+    };
+    let saved = read();
+    async function save(key, want) {
+      show({ ...saved, [key]: want });
+      controls().forEach((el) => { el.disabled = true; });
       try {
-        const state = await send("POST", base + "/settings", { [key]: want });
-        if (key in state) box.checked = Boolean(state[key]);
+        saved = { ...saved, ...(await send("POST", base + "/settings", { [key]: want })) };
         say("Saved");
       } catch (err) {
-        box.checked = !want;
         say(err.message, true);
       } finally {
-        box.disabled = false;
+        controls().forEach((el) => { el.disabled = false; });
+        show(saved);
       }
+    }
+    settings.addEventListener("change", (event) => {
+      const box = event.target.closest('input[type="checkbox"][data-or-setting]');
+      if (box) save(box.dataset.orSetting, box.checked);
+    });
+    settings.addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-or-setting]");
+      if (btn && btn.getAttribute("aria-pressed") !== "true") save(btn.dataset.orSetting, btn.value);
     });
   }
 
@@ -335,13 +367,16 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
     }
     const chosen = new Set(data.selected || []);
     const stale = [...chosen].filter((slug) => !providers.some((p) => p.slug === slug));
+    const below = new Set(providers.filter((p) => p.below_floor).map((p) => p.slug));
     note.textContent = chosen.size
       ? `Requests for this model only go to the checked providers. ${label} still balances between them.`
       : "Any provider can serve this model. Check providers to allow only those.";
+    if (below.size) note.textContent += ` Dimmed providers serve below your precision floor, so ${label} skips them.`;
     if (stale.length) note.textContent += ` No longer listed: ${stale.join(", ")}.`;
     providers.forEach((p) => {
       const tr = document.createElement("tr");
-      if (!p.up) tr.className = "down";
+      if (!p.up) tr.classList.add("down");
+      if (p.below_floor) tr.classList.add("is-below");
       // Provider fields come from OpenRouter: build with text nodes only.
       const cell = (text, cls) => {
         const td = document.createElement("td");
@@ -363,8 +398,10 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
       const nameTd = cell(undefined, "or-prov-name");
       const nameCell = document.createElement("span");
       nameTd.appendChild(nameCell);
-      if (p.quantization) tag(nameTd, p.quantization, "or-sub");
       if ((p.variants || []).length > 1) tag(nameTd, p.variants.length + " endpoints", "or-sub");
+      const quants = p.quantizations && p.quantizations.length ? p.quantizations : p.quantization ? [p.quantization] : [];
+      const quant = cell(quants.join(" · ").toUpperCase() || "—", "or-prov-quant");
+      if (p.below_floor) quant.title = "Below your precision floor";
       cell(money(p.input), "num");
       cell(money(p.output), "num");
       cell(money(p.cache_read), "num");
@@ -394,8 +431,13 @@ document.querySelectorAll("[data-or-models]").forEach(function modelListSettings
       return Array.from(body.querySelectorAll("input:checked")).map((el) => el.value);
     }
     function sync() {
-      const n = checked().length;
+      const picked = checked();
+      const n = picked.length;
+      const low = picked.filter((slug) => below.has(slug)).length;
       hint.textContent = n ? `Only ${n} provider${n === 1 ? "" : "s"} will be used.` : "No providers checked: any provider can serve it.";
+      if (low === n && n) hint.textContent += " All of them are below your precision floor, so requests for this model find no provider.";
+      else if (low) hint.textContent += ` ${low} of them ${low === 1 ? "is" : "are"} below your precision floor and will be skipped.`;
+      hint.classList.toggle("bad", n > 0 && low === n);
     }
     body.addEventListener("change", sync);
     table.hidden = false;

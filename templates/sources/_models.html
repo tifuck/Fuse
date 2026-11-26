@@ -1,17 +1,14 @@
     <details class="panel provider-models" data-or-scope>
       <summary><b>{{ ml.label }} models</b> <span class="usage-sub" data-ml-summary>{{ ml.on }} of {{ ml.rows|length }} on</span></summary>
-      <section class="or-models" data-or-models data-prefs="/sources/models/{{ ml.provider }}" data-label="{{ ml.label }}">
+      <section class="or-models or-cols-{{ 'priced' if ml.priced else 'plain' }}" data-or-models data-prefs="/sources/models/{{ ml.provider }}" data-label="{{ ml.label }}">
         {% if ml.groups|length > 1 %}
-        <div class="or-settings">
-          <fieldset class="or-group">
-            <legend>Groups</legend>
-            {% for g in ml.groups %}
-            <label class="or-switch">
-              <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
-              <span><b>{{ g.label }}</b><small>Turns every model in the group on or off. Single models stay editable.</small></span>
-            </label>
-            {% endfor %}
-          </fieldset>
+        <div class="or-groups">
+          {% for g in ml.groups %}
+          <label class="or-switch">
+            <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
+            <span><b>{{ g.label }}</b><small>Every model in the group. Single models stay editable.</small></span>
+          </label>
+          {% endfor %}
         </div>
         {% endif %}
         <div class="or-toolbar">
@@ -27,21 +24,28 @@
           </div>
           <span class="or-count" data-or-count aria-live="polite"></span>
         </div>
-        <ul class="or-list" data-or-list>
-          {% for r in ml.rows %}
-          <li class="or-row{% if r.on %} is-on{% endif %}" data-or-row data-id="{{ r.id }}" data-group="{{ r.group }}">
-            <div class="or-row-main">
-              <label class="or-toggle" title="Show in my model picker">
-                <input type="checkbox" role="switch" data-or-model{% if r.on %} checked{% endif %} aria-label="Enable {{ r.id }}">
-              </label>
-              <div class="or-row-title">
-                <span class="or-row-name">{{ r.id }}</span>
-                {% if ml.groups|length > 1 %}<code class="or-row-id">{{ (ml.groups|selectattr('id', 'equalto', r.group)|first).label }}</code>{% endif %}
+        <div class="or-scroll">
+          {% if ml.priced %}<div class="or-head" aria-hidden="true"><span></span><span>Model</span><span>Input /M</span><span>Output /M</span></div>{% endif %}
+          <ul class="or-list" data-or-list>
+            {% for r in ml.rows %}
+            <li class="or-row{% if r.on %} is-on{% endif %}" data-or-row data-id="{{ r.id }}" data-group="{{ r.group }}">
+              <div class="or-row-main">
+                <label class="or-toggle" title="Show in my model picker">
+                  <input type="checkbox" role="switch" data-or-model{% if r.on %} checked{% endif %} aria-label="Enable {{ r.id }}">
+                </label>
+                <div class="or-row-title">
+                  <span class="or-row-name">{{ r.id }}</span>
+                  {% if ml.groups|length > 1 %}<span class="or-row-sub"><code class="or-row-id">{{ (ml.groups|selectattr('id', 'equalto', r.group)|first).label }}</code></span>{% endif %}
+                </div>
+                {% if ml.priced %}
+                {% if r.input == 0 and r.output == 0 %}<span class="or-row-in or-free">Free</span><span class="or-row-out"></span>{% else %}<span class="or-row-in">{{ usd_m(r.input) }}</span><span class="or-row-out">{{ usd_m(r.output) }}</span>{% endif %}
+                {% endif %}
               </div>
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
         <p class="or-empty" data-or-empty hidden>No models match.</p>
+        {% if ml.priced %}<p class="or-foot">{{ ml.label }} bills your key per token: list prices per million tokens.</p>{% endif %}
       </section>
     </details>

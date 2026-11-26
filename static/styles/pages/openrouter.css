@@ -1,8 +1,5 @@
-/* OpenRouter models and providers (sources page) */
-.or-settings {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
-  gap: 0.25rem 1.5rem; margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--line);
-}
+/* Model lists, routing and provider pins on Sources: OpenRouter's and
+   NanoGPT's panels and every provider's list (sources/_models.html). */
 .or-group { border: 0; margin: 0; padding: 0; min-width: 0; }
 .or-group legend { padding: 0; margin-bottom: 0.15rem; color: var(--mute); font-size: 0.78rem; }
 .or-switch { display: flex; flex-direction: row; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0; cursor: pointer; }
@@ -10,6 +7,8 @@
 .or-switch b { font-weight: 500; font-size: 0.9rem; color: var(--mist); }
 .or-switch small { color: var(--mute); font-size: 0.78rem; line-height: 1.35; }
 .or-switch code { font-size: 0.72rem; }
+.or-switch:has(input:disabled) { cursor: default; }
+.or-switch:has(input:disabled) > span { opacity: 0.55; }
 .or-switch input, .or-toggle input {
   position: relative; flex: 0 0 auto; width: 2.1rem; height: 1.2rem; margin: 0.1rem 0 0; padding: 0;
   border: 1px solid var(--line); border-radius: 999px;
@@ -28,45 +27,95 @@
 .or-prov-btn:focus-visible, .or-seg button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .or-switch input:disabled, .or-toggle input:disabled { opacity: 0.5; cursor: default; }
 
-.or-models { margin-top: 1rem; display: grid; gap: 0.6rem; }
+/* The key: who it is, then three readings side by side. */
+.or-account-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; }
+.or-account-key { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; min-width: 0; margin: 0; font: 600 0.95rem/1.3 var(--mono); overflow-wrap: anywhere; }
+.or-account-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 1rem 1.5rem; margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid var(--line);
+}
+.or-account-stats .metric-value { margin: 0.28rem 0 0.2rem; font-size: clamp(1.15rem, 2vw, 1.4rem); }
+.or-account-stats .metric-value small { color: var(--mute); font-size: 0.72rem; font-weight: 400; }
+.or-account-stats .usage-meter { max-width: none; margin: 0.35rem 0; }
+.or-account > .callout { margin: 0.85rem 0 0; }
+
+.or-manage { display: grid; gap: 1.5rem; margin-top: 0.6rem; }
+.or-section-title { margin: 0; color: var(--mist); font: 600 0.95rem/1.3 var(--mono); }
+.or-section-title span { margin-left: 0.5rem; color: var(--mute); font-size: 0.72rem; font-weight: 400; }
+
+/* Routing: switches and the precision floor in columns that wrap. */
+.or-routing { display: grid; gap: 0.5rem; padding: 1rem 1.15rem 0.6rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.or-routing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 0.4rem 2rem; }
+.or-floor { display: grid; justify-items: start; gap: 0.4rem; padding: 0.5rem 0; }
+.or-floor-label { color: var(--mist); font-size: 0.9rem; font-weight: 500; }
+.or-floor small { color: var(--mute); font-size: 0.78rem; line-height: 1.35; }
+.or-floor code { font-size: 0.72rem; }
+
+.or-models { display: grid; gap: 0.7rem; min-width: 0; }
+.or-models-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.4rem 1rem; }
+.or-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 0 2rem; }
 .or-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 :where(html:not(.is-chat-root)) .or-toolbar input[type="search"] {
   flex: 1 1 16rem; min-width: 0; height: var(--control); padding: 0 0.75rem;
   background: var(--raise); border: 1px solid var(--line); border-radius: 8px; color: var(--mist);
 }
-.or-seg { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.or-seg { display: inline-flex; flex-wrap: wrap; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
 .or-seg button {
   border: 0; background: none; color: var(--mute); font: inherit; font-size: 0.82rem;
   padding: 0.3rem 0.7rem; border-radius: 7px; cursor: pointer;
 }
 .or-seg button:hover { color: var(--mist); }
+.or-seg button:disabled { cursor: default; opacity: 0.6; }
 :where(html:not(.is-chat-root)) .or-seg button.on { background: var(--raise); color: var(--mist); }
-.or-count { margin-left: auto; color: var(--mute); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.or-count { margin-left: auto; color: var(--mute); font: 0.74rem/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+.or-models-head .or-count { margin-left: 0; }
 .or-bulk { display: inline-flex; gap: 0.3rem; }
 /* The model list under a provider: folded to one line until opened. */
 .provider-models > summary { display: flex; align-items: baseline; gap: 0.6rem; min-height: 2.75rem; cursor: pointer; }
 .provider-models > summary b { font-weight: 500; }
 .provider-models[open] > summary { margin-bottom: 0.6rem; }
 
-.or-list {
-  list-style: none; margin: 0; padding: 0; max-height: 30rem; overflow: auto;
+/* The table: one grid for the header and every row. Columns per list kind:
+   full (OpenRouter, NanoGPT's owner), noprov, priced and plain. */
+.or-models { --or-cols: 2.4rem minmax(0, 1fr) 4.5rem 5.25rem 5.25rem 7.75rem; }
+.or-models.or-cols-noprov { --or-cols: 2.4rem minmax(0, 1fr) 4.5rem 5.25rem 5.25rem; }
+.or-models.or-cols-priced { --or-cols: 2.4rem minmax(0, 1fr) 5.25rem 5.25rem; }
+.or-models.or-cols-plain { --or-cols: 2.4rem minmax(0, 1fr); }
+.or-scroll {
+  max-height: min(70vh, 46rem); overflow: auto; overscroll-behavior: contain;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
 }
-.or-row + .or-row { border-top: 1px solid var(--line); }
-.or-row-main {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center;
-  gap: 0.75rem; padding: 0.5rem 0.75rem;
+.or-head, .or-row-main {
+  display: grid; grid-template-columns: var(--or-cols); align-items: center;
+  gap: 0 0.9rem; padding: 0.5rem 0.85rem;
 }
+.or-head {
+  position: sticky; top: 0; z-index: 1; padding-block: 0.5rem;
+  border-bottom: 1px solid var(--line); background: var(--panel);
+  color: var(--mute); font: 500 0.6rem/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+}
+.or-head > :nth-child(n+3) { text-align: right; }
+.or-list { list-style: none; margin: 0; padding: 0; }
+.or-row + .or-row { border-top: 1px solid var(--line); }
+.or-row:hover > .or-row-main { background: color-mix(in srgb, var(--mist) 3%, transparent); }
 .or-toggle { display: flex; }
-.or-row-title { display: grid; min-width: 0; }
+.or-row-title { display: grid; gap: 0.12rem; min-width: 0; }
 :where(html:not(.is-chat-root)) .or-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; color: var(--mist); }
 :where(html:not(.is-chat-root)) .or-row.is-on { box-shadow: inset 2px 0 0 var(--brass); }
+.or-row-sub { display: flex; align-items: baseline; gap: 0.55rem; min-width: 0; }
 .or-row-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 0.7rem; color: var(--mute); }
-.or-row-price { display: grid; justify-items: end; gap: 0.1rem; font-family: var(--mono); font-size: 0.75rem; color: color-mix(in srgb, var(--mist) 82%, transparent); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.or-row-price i { font-style: normal; opacity: 0.6; margin-left: 0.25rem; }
+.or-plan, .or-paygo { flex: 0 0 auto; font: 0.66rem/1.2 var(--mono); }
+.or-plan { color: var(--ok); }
+.or-paygo { color: var(--mute); }
+.or-row-ctx, .or-row-in, .or-row-out {
+  text-align: right; white-space: nowrap; font: 0.78rem/1.2 var(--mono); font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--mist) 85%, transparent);
+}
+.or-row-ctx { color: var(--mute); }
+.or-row.is-covered :is(.or-row-in, .or-row-out) { color: var(--mute); opacity: 0.75; }
 .or-free { color: var(--ok); }
 .or-prov-btn {
-  border: 1px solid var(--line); background: none; color: var(--mute); font: inherit; font-size: 0.78rem;
+  justify-self: end; border: 1px solid var(--line); background: none; color: var(--mute); font: inherit; font-size: 0.78rem;
   padding: 0.25rem 0.6rem; border-radius: 7px; cursor: pointer; white-space: nowrap;
   transition: color var(--dur-hover) ease, border-color var(--dur-hover) ease;
 }
@@ -76,12 +125,12 @@
 :where(html:not(.is-chat-root)) .or-row.is-open .or-prov-btn::after { transform: rotate(90deg); }
 .or-row[data-pinned]:not([data-pinned="0"]) .or-prov-btn { color: var(--brass); border-color: color-mix(in srgb, var(--brass) 45%, transparent); }
 .or-empty { margin: 0; color: var(--mute); font-size: 0.85rem; text-align: center; padding: 1rem 0; }
-.or-foot { margin: 0; color: var(--mute); font-size: 0.78rem; }
+.or-foot { margin: 0; color: var(--mute); font-size: 0.78rem; line-height: 1.45; }
 .or-foot b { color: var(--mist); font-weight: 500; }
 
-/* The provider ledger: the one detailed surface on this tab. */
+/* The provider ledger under a model: the one detailed surface on this tab. */
 .or-drawer {
-  margin: 0 0.75rem 0.75rem; padding: 0.75rem 0.85rem; border-radius: 10px;
+  margin: 0 0.85rem 0.85rem 3.3rem; padding: 0.75rem 0.85rem; border-radius: 10px;
   background: var(--ink); border: 1px solid var(--line); display: grid; gap: 0.65rem;
   animation: or-open var(--dur-2) var(--ease-glide);
 }
@@ -89,15 +138,19 @@
 .or-drawer-note { margin: 0; color: var(--mute); font-size: 0.82rem; }
 .or-drawer-title { margin: 0; color: var(--mist); font-size: 0.88rem; font-weight: 500; }
 :where(html:not(.is-chat-root)) .or-drawer-note.bad { color: var(--fault); }
+.or-prov-scroll { overflow-x: auto; }
 .or-prov { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-.or-prov th { text-align: left; color: var(--mute); font-weight: 400; font-size: 0.74rem; padding: 0 0.5rem 0.35rem; border-bottom: 1px solid var(--line); }
+.or-prov th { text-align: left; color: var(--mute); font-weight: 400; font-size: 0.74rem; padding: 0 0.5rem 0.35rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .or-prov td { padding: 0.4rem 0.5rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); cursor: pointer; }
 .or-prov tr:last-child td { border-bottom: 0; }
 .or-prov tbody tr:hover { background: color-mix(in srgb, var(--raise) 60%, transparent); }
 .or-prov tbody tr:has(input:checked) { background: color-mix(in srgb, var(--brass) 8%, transparent); }
 :where(html:not(.is-chat-root)) .or-prov tr.down td { opacity: 0.55; }
+.or-prov tr.is-below td:not(:first-child) { opacity: 0.5; }
 :where(html:not(.is-chat-root)) .or-prov .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 :where(html:not(.is-chat-root)) .or-prov th.num { font-family: inherit; }
+.or-prov-quant { font-family: var(--mono); font-size: 0.72rem; color: var(--mute); white-space: nowrap; }
+.or-prov tr.is-below .or-prov-quant { color: var(--fault); }
 .or-prov input {
   appearance: none; -webkit-appearance: none; width: 1.05rem; height: 1.05rem; margin: 0; cursor: pointer;
   border: 1px solid var(--line); border-radius: 5px; background: var(--raise);
@@ -107,38 +160,40 @@
 :where(html:not(.is-chat-root)) .or-prov-name a { color: var(--mist); text-decoration: none; }
 :where(html:not(.is-chat-root)) .or-prov-name a:hover { text-decoration: underline; }
 :where(html:not(.is-chat-root)) .or-sub { color: var(--mute); font-family: var(--mono); font-size: 0.68rem; }
-.or-best { color: var(--brass); font-size: 0.7rem; }
-.or-replace { margin-top: 0.6rem; }
-.or-replace summary { cursor: pointer; color: var(--mute); font-size: 0.88rem; padding: 0.4rem 0; }
-.or-replace summary:hover { color: var(--mist); }
-:where(html:not(.is-chat-root)) .or-replace[open] summary { color: var(--mist); }
-.or-replace form { margin-top: 0.5rem; }
 :where(html:not(.is-chat-root)) .or-drawer-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .or-drawer-hint { color: var(--mute); font-size: 0.78rem; }
+.or-drawer-hint.bad { color: var(--fault); }
 
-@media (max-width: 640px) {
-  /* The name takes the whole first line; price and Providers share the second. */
-  .or-row-main { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 0.4rem; }
+/* A narrower pane drops the context column first. */
+@container pools (max-width: 46rem) {
+  .or-models { --or-cols: 2.4rem minmax(0, 1fr) 4.75rem 4.75rem 7rem; }
+  .or-models.or-cols-noprov { --or-cols: 2.4rem minmax(0, 1fr) 4.75rem 4.75rem; }
+  .or-row-ctx, .or-head .or-h-ctx { display: none; }
+  .or-drawer { margin-left: 0.85rem; }
+}
+/* A phone: the name takes the first line; prices and Providers share the second. */
+@container pools (max-width: 34rem) {
+  .or-head { display: none; }
+  .or-models .or-row-main { grid-template-columns: 2.4rem max-content max-content minmax(0, 1fr) auto; row-gap: 0.4rem; }
   .or-row-title { grid-column: 2 / -1; }
-  .or-row-price { grid-column: 2; grid-row: 2; display: flex; flex-wrap: wrap; gap: 0.2rem 0.75rem; }
-  .or-prov-btn { grid-column: 3; grid-row: 2; min-height: 2.25rem; }
-  .or-drawer { overflow-x: auto; margin: 0 0.4rem 0.5rem; }
-  .or-prov th:nth-child(5), .or-prov td:nth-child(5),
-  .or-prov th:nth-child(6), .or-prov td:nth-child(6) { display: none; }
+  .or-row-in { grid-column: 2; grid-row: 2; text-align: left; }
+  .or-row-out { grid-column: 3; grid-row: 2; text-align: left; }
+  .or-row-in:not(.or-free)::before { content: "in "; color: var(--mute); }
+  .or-row-out:not(:empty)::before { content: "out "; color: var(--mute); }
+  .or-prov-btn { grid-column: 5; grid-row: 2; min-height: 2.25rem; }
+  .or-drawer { margin: 0 0.4rem 0.5rem; }
+  .or-prov th:nth-child(6), .or-prov td:nth-child(6),
+  .or-prov th:nth-child(7), .or-prov td:nth-child(7) { display: none; }
   .or-count { margin-left: 0; }
+  :where(html:not(.is-chat-root)) .or-row-name { white-space: normal; overflow-wrap: anywhere; }
+  .or-row-id { white-space: normal; overflow-wrap: anywhere; }
 }
 @media (prefers-reduced-motion: reduce) {
   .or-drawer { animation: none; }
   .or-switch input::after, .or-toggle input::after { transition: none; }
 }
 
-
-/* Console: the settings read as two columns of switch rows; model names may
-   wrap on phones instead of clipping after a few letters. */
+/* Group labels read as small mono captions, like the rest of the page. */
 .or-group legend { font: 0.62rem/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
 .or-switch b { font-size: 0.82rem; }
 .or-switch small { font-size: 0.72rem; }
-@media (max-width: 720px) {
-  :where(html:not(.is-chat-root)) .or-row-name { white-space: normal; overflow-wrap: anywhere; }
-  .or-row-id { white-space: normal; overflow-wrap: anywhere; }
-}

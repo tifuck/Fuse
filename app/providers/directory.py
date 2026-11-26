@@ -47,6 +47,25 @@ def group_switches(provider: str, user_id: int) -> list[dict]:
             for g, label, _default in model_prefs.groups(provider)]
 
 
+def _usd(value) -> float | None:
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        return None
+    return rate if rate >= 0 else None
+
+
+def _refuseless_prices(rows: list[dict]) -> bool:
+    """Refuseless bills per token at its own lineup's rates (USD per million):
+    put them on its rows. False when the lineup lists none."""
+    from ..sources import refuseless
+
+    for row in rows:
+        pricing = (refuseless.catalog_record(row["id"]) or {}).get("pricing") or {}
+        row["input"], row["output"] = _usd(pricing.get("input_per_m")), _usd(pricing.get("output_per_m"))
+    return any(row["input"] is not None for row in rows)
+
+
 def model_lists(user_id: int, panes: list[dict]) -> dict[str, list[dict]]:
     """Per pane: one model list per provider on it the user can use, from
     cached catalogs only (a provider whose list has not loaded yet shows none)."""
@@ -68,6 +87,7 @@ def model_lists(user_id: int, panes: list[dict]) -> dict[str, list[dict]]:
             out.setdefault(pane_id, []).append({
                 "provider": pid, "label": spec.label, "rows": rows, "on": sum(1 for r in rows if r["on"]),
                 "groups": group_switches(pid, user_id) if spec.model_groups else [],
+                "priced": pid == "refuseless" and _refuseless_prices(rows),
             })
     return out
 
