@@ -28,7 +28,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation {
   backdrop-filter: var(--dk-glass);
   box-shadow: var(--dk-pop-shadow);
   color: var(--dk-text);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 500;
   line-height: 1;
   animation: dictation-in-desktop var(--dur-2) var(--ease-snap);
@@ -109,7 +109,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn kbd {
   border-radius: 4px;
   background: color-mix(in srgb, currentColor 10%, transparent);
   color: var(--dk-mute);
-  font: 500 11px/1 var(--mono);
+  font: 500 0.6875rem/1 var(--mono);
   text-align: center;
 }
 html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn:hover { background: var(--dk-hover); color: var(--dk-text); }
@@ -131,7 +131,7 @@ html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation.is-finishin
 
 /* A phone: the same row, keys a little taller for thumbs and no keycaps. */
 @media (max-width: 800px) {
-  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation { font-size: 14px; animation-name: dictation-up-desktop; }
+  html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation { font-size: 0.875rem; animation-name: dictation-up-desktop; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn { height: 34px; padding: 0 12px; touch-action: manipulation; }
   html[data-chat-view="desktop"] .chat[data-view="desktop"] .dictation-btn kbd { display: none; }
 }

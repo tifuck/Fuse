@@ -69,12 +69,12 @@ html[data-chat-view="desktop"] body.is-settings {
     border-right: 0;
     font-family: var(--sans);
   }
-  & .app-rail .chat-history-head { height: 36px; min-height: 36px; border-bottom: 1px solid var(--dk-card-line); }
+  & .app-rail .chat-history-head { height: auto; min-height: calc(36px + var(--safe-top)); padding-top: var(--safe-top); border-bottom: 1px solid var(--dk-card-line); }
   & .settings-shell .app-rail-nav { gap: 1px; padding: 0.35rem 8px 0.85rem; }
   & .settings-shell .app-rail-label {
     margin: 12px 8px 3px;
     color: var(--mute);
-    font: 500 12px/1.3 var(--sans);
+    font: 500 0.75rem/1.3 var(--sans);
     letter-spacing: 0;
     text-transform: none;
   }
@@ -87,7 +87,7 @@ html[data-chat-view="desktop"] body.is-settings {
     border-radius: 7px;
     color: var(--mist);
     background: none;
-    font: 13px/1.3 var(--sans);
+    font: 0.8125rem/1.3 var(--sans);
     text-decoration: none;
   }
   & .settings-shell .app-rail-nav a:hover { background: var(--dk-hover); }
@@ -103,10 +103,16 @@ html[data-chat-view="desktop"] body.is-settings {
     background: var(--dk-side);
     border-bottom: 1px solid var(--dk-card-line);
   }
-  & .settings-bar .chat-bar-title { color: var(--mist); font: 500 13px/1.2 var(--sans); letter-spacing: 0; }
+  & .settings-bar .chat-bar-title { color: var(--mist); font: 500 0.8125rem/1.2 var(--sans); letter-spacing: 0; }
   & .settings-bar .chat-bar-title::before { content: "Fuse  /  " / ""; color: var(--mute); font-weight: 400; white-space: pre; }
   & .settings-bar .chat-history-toggle { height: 28px; min-width: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--mute); }
   & .settings-bar .chat-history-toggle:hover { background: var(--dk-hover); color: var(--mist); }
+  /* Touch: the bar and the rail's head clear the notch; the toggle and the rail's links are full taps. */
+  @media (max-width: 800px), (pointer: coarse) {
+    & :is(.settings-bar.chat-bar, .app-rail .chat-history-head) { min-height: calc(2.75rem + var(--safe-top)); padding-top: var(--safe-top); }
+    & .settings-bar .chat-history-toggle { height: 44px; min-width: 44px; }
+    & .settings-shell .app-rail-nav a { min-height: 44px; }
+  }
 
   /* —— Page = the centered transcript column —— */
   & .settings-scroll {
@@ -120,7 +126,7 @@ html[data-chat-view="desktop"] body.is-settings {
   & .settings-scroll > .settings-lead { flex: 1 1 30rem; }
   & .settings-scroll > .settings-tools { flex: 0 1 auto; margin-left: auto; justify-content: flex-end; }
   & .settings-scroll > main { flex: 1 0 100%; min-width: 0; }
-  & .settings-lead { margin: 0 0 1.25rem; color: var(--mute); font-size: 13.5px; line-height: 1.55; }
+  & .settings-lead { margin: 0 0 1.25rem; color: var(--mute); font-size: 0.84375rem; line-height: 1.55; }
   & .settings-tools { margin: 0 0 1.25rem; max-width: 100%; min-width: 0; }
   & :is(.settings-lead a, .settings-scroll .usage-sub a, .set-head p a) { color: var(--dk-link); text-decoration: none; }
   & :is(.settings-lead a, .settings-scroll .usage-sub a, .set-head p a):hover { text-decoration: underline; }
@@ -140,11 +146,11 @@ html[data-chat-view="desktop"] body.is-settings {
   & .settings-shell :is(.skills-main, .art-list, .proj-list, .hosts-empty, .uz-facts-box, .uz-key-create, .param-table, .error-grid, .dl-hero, .dl-list, .dl-alt) { border-color: var(--dk-card-line); border-radius: 10px; background: var(--dk-card); overflow: clip; }
   & .settings-shell :is(.skills-tab, .skills-find, .proj-search, .catalog-find) { border-color: var(--dk-card-line); border-radius: 7px; }
   & .settings-shell .skills-switch, & .settings-shell .skills-switch::after { border-radius: 999px; }
-  & .settings-shell :is(.panel h2, .section-heading h2, .uz-card-head h2) { font: 600 14px/1.4 var(--sans); letter-spacing: 0; }
-  & .settings-shell :is(.usage-sub, .uz-sub, .set-head p, .set-label span) { color: var(--mute); font-size: 12.5px; line-height: 1.5; }
+  & .settings-shell :is(.panel h2, .section-heading h2, .uz-card-head h2) { font: 600 0.875rem/1.4 var(--sans); letter-spacing: 0; }
+  & .settings-shell :is(.usage-sub, .uz-sub, .set-head p, .set-label span) { color: var(--mute); font-size: 0.78125rem; line-height: 1.5; }
   & .settings-shell :is(.metric-label, .eyebrow, .uz-label) {
     color: var(--mute);
-    font: 500 12px/1.3 var(--sans);
+    font: 500 0.75rem/1.3 var(--sans);
     letter-spacing: 0;
     text-transform: none;
   }
@@ -156,7 +162,7 @@ html[data-chat-view="desktop"] body.is-settings {
     min-height: 1.25rem;
     padding: 0.05rem 0.45rem;
     border-radius: 5px;
-    font: 500 11px/1.5 var(--sans);
+    font: 500 0.6875rem/1.5 var(--sans);
     letter-spacing: 0;
     text-transform: none;
   }
@@ -179,7 +185,7 @@ html[data-chat-view="desktop"] body.is-settings {
     border-radius: 6px;
     background: none;
     color: var(--mute);
-    font: 500 12.5px/1 var(--sans);
+    font: 500 0.78125rem/1 var(--sans);
     box-shadow: none;
   }
   & .settings-shell :is(.usage-tabs, .uz-seg, .interval, .proj-tabs, .or-seg) :is(a, button):hover,
@@ -195,27 +201,27 @@ html[data-chat-view="desktop"] body.is-settings {
   & .settings-jump { width: fit-content; max-width: 100%; }
 
   /* —— Tables —— */
-  & .settings-shell .log { font-size: 13px; }
+  & .settings-shell .log { font-size: 0.8125rem; }
   & .settings-shell :is(.log, .sched-table, .uz-table, .source-table, .param-table, .ml-table, .keys-table) th {
     color: var(--mute);
-    font: 500 12px/1.3 var(--sans);
+    font: 500 0.75rem/1.3 var(--sans);
     letter-spacing: 0;
     text-transform: none;
   }
-  & .settings-shell :is(.sched-table, .source-table, .param-table, .ml-table, .keys-table) td { font-size: 13px; }
+  & .settings-shell :is(.sched-table, .source-table, .param-table, .ml-table, .keys-table) td { font-size: 0.8125rem; }
   & .settings-shell :is(.log, .sched-table) tbody tr:hover { background: var(--dk-hover); }
   & .settings-shell .sched-table tbody tr.is-open { background: var(--dk-sel); }
 
   /* —— Code, notes —— */
   & .settings-shell :is(.code-chip, .code-block, .hosts-fingerprint) { background: var(--dk-side); border: 1px solid var(--dk-card-line); border-radius: 7px; }
-  & .settings-shell .callout { border-radius: 8px; font-size: 13px; }
+  & .settings-shell .callout { border-radius: 8px; font-size: 0.8125rem; }
   & .docs-toc a { border-radius: 6px; }
   & .docs-toc a.on { color: var(--mist); background: var(--dk-sel); }
 
   /* Page-head action groups (Sources): a quiet label, then the choices. */
   & .settings-tools .head-actions { align-items: center; gap: 0.35rem; flex-wrap: wrap; flex-shrink: 1; min-width: 0; }
   & .settings-tools .head-actions form { margin: 0; display: flex; }
-  & .head-actions-label { margin-right: 0.3rem; color: var(--mute); font: 500 12px/1.3 var(--sans); }
+  & .head-actions-label { margin-right: 0.3rem; color: var(--mute); font: 500 0.75rem/1.3 var(--sans); }
 
   /* Card grids keep their columns packed instead of leaving tall gaps. */
   & .catalog-grid:not(.is-platforms):has(> .catalog-family:nth-child(3)) { display: block; columns: 2 24rem; column-gap: 1rem; }
@@ -223,7 +229,7 @@ html[data-chat-view="desktop"] body.is-settings {
   & .catalog-grid.is-platforms { display: grid; columns: auto; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem; }
   & .catalog-grid.is-platforms > .catalog-family { margin: 0; }
 
-  & .settings-shell label:not(.check):not(.pool-switch):not(.skills-toggle):not(.proj-search):not(.skills-find):not(.proj-machine):not(.hosts-check) { color: var(--mute); font-size: 12.5px; }
+  & .settings-shell label:not(.check):not(.pool-switch):not(.skills-toggle):not(.proj-search):not(.skills-find):not(.proj-machine):not(.hosts-check) { color: var(--mute); font-size: 0.78125rem; }
   & .settings-shell form.stack :is(input:where(:not([type="checkbox"], [type="radio"])), select) { max-width: 44rem; }
   & .settings-shell .panel :is(p, .usage-sub) + form { margin-top: 0.75rem; }
   & .settings-shell .section-heading { align-items: flex-start; text-align: left; }
@@ -237,9 +243,9 @@ html[data-chat-view="desktop"] body.is-settings {
 
   /* Descriptions run the width of their box. */
   & .settings-shell :is(.settings-lead, .usage-sub, .usage-note, .uz-note, .aside, .lede, .set-head p, .set-label span, .provider-meta p) { max-width: none; }
-  & .settings-shell .docs-panel .usage-note { font-size: 13.5px; line-height: 1.6; }
-  & .settings-shell .panel > .aside { margin: 0.35rem 0 0.85rem; color: var(--mute); font-size: 12.5px; line-height: 1.55; }
-  & .settings-shell .empty { font-size: 13px; }
+  & .settings-shell .docs-panel .usage-note { font-size: 0.84375rem; line-height: 1.6; }
+  & .settings-shell .panel > .aside { margin: 0.35rem 0 0.85rem; color: var(--mute); font-size: 0.78125rem; line-height: 1.55; }
+  & .settings-shell .empty { font-size: 0.8125rem; }
   & .settings-shell :is(.proj-search, .skills-find) input[type="search"] { min-height: 0; padding: 0; border: 0; background-color: transparent; }
   @media (max-width: 720px) {
     & .settings-shell .api-docs .catalog-metrics .metric-card { border: 0; border-top: 1px solid var(--dk-card-line); border-radius: 0; background: transparent; }
@@ -262,21 +268,22 @@ html[data-chat-view="desktop"] body:is(.is-settings, .is-chat) {
   & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.ghost { background: var(--dk-raise); border-color: var(--dk-card-line); color: var(--mist); }
   & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.ghost:hover { background: var(--dk-sel); }
   & :is(.settings-shell, dialog.modal, .fp-dialog) .btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 1px; }
-  & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.sm { height: 28px; padding: 0 0.7rem; font-size: 12.5px; }
-  & :is(.settings-shell, dialog.modal) .btn:not(.sm) { height: 32px; padding: 0 0.9rem; font-size: 13px; }
+  & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.sm { height: 28px; padding: 0 0.7rem; font-size: 0.78125rem; }
+  @media (pointer: coarse) { & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.sm { height: 2.5rem; } }
+  & :is(.settings-shell, dialog.modal) .btn:not(.sm) { height: 32px; padding: 0 0.9rem; font-size: 0.8125rem; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])), select, textarea) {
     border: 1px solid var(--dk-card-line);
     border-radius: 7px;
     background-color: var(--dk-side);
     color: var(--mist);
     font-family: var(--sans);
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   & :is(.settings-shell, dialog.modal, .fp-dialog) :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"])), select) { min-height: 32px; padding: 0.35rem 0.65rem; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) select { padding-right: 1.8rem; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) textarea { padding: 0.55rem 0.7rem; line-height: 1.55; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) :is(input, select, textarea):focus:not(:is(.fp-search, .proj-search, .skills-find, .catalog-find) *) { border-color: var(--dk-link); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--dk-link) 22%, transparent); }
-  & :is(.settings-shell, dialog.modal, .fp-dialog, .chat-sheet) input[type="file"] { padding: 0.3rem; font-size: 12.5px; }
+  & :is(.settings-shell, dialog.modal, .fp-dialog, .chat-sheet) input[type="file"] { padding: 0.3rem; font-size: 0.78125rem; }
   & :is(.settings-shell, dialog.modal, .fp-dialog, .chat-sheet) input[type="file"]::file-selector-button {
     margin-right: 0.6rem;
     padding: 0.3rem 0.7rem;
@@ -284,12 +291,12 @@ html[data-chat-view="desktop"] body:is(.is-settings, .is-chat) {
     border-radius: 6px;
     background: var(--dk-raise);
     color: var(--mist);
-    font: 500 12.5px var(--sans);
+    font: 500 0.78125rem var(--sans);
     cursor: pointer;
   }
   & :is(.settings-shell, dialog.modal) :is(.hosts-field, .fp-field):not(.check):not(.hosts-check):not(input[type="checkbox"]) > span:first-child:not(:has(input)) {
     color: var(--mute);
-    font: 500 12.5px/1.4 var(--sans);
+    font: 500 0.78125rem/1.4 var(--sans);
     letter-spacing: 0;
     text-transform: none;
   }
@@ -314,8 +321,8 @@ html[data-chat-view="desktop"] body:is(.is-settings, .is-chat) {
     padding: 0.6rem 0.85rem 0.6rem 1.15rem;
     border-bottom: 1px solid var(--dk-card-line);
   }
-  & dialog.modal .modal-head h2 { margin: 0.15rem 0 0; font: 600 15px/1.4 var(--sans); letter-spacing: 0; }
-  & dialog.modal .modal-head .metric-label { margin: 0; color: var(--mute); font: 500 12px/1.3 var(--sans); letter-spacing: 0; text-transform: none; }
+  & dialog.modal .modal-head h2 { margin: 0.15rem 0 0; font: 600 0.9375rem/1.4 var(--sans); letter-spacing: 0; }
+  & dialog.modal .modal-head .metric-label { margin: 0; color: var(--mute); font: 500 0.75rem/1.3 var(--sans); letter-spacing: 0; text-transform: none; }
   & dialog.modal-confirm .modal-shell > .aside { margin-top: 1.1rem; }
   & dialog.modal .modal-actions { justify-content: flex-end; }
   & :is(.fp-dialog, .fuse-vault) { border-radius: 10px; }
