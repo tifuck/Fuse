@@ -79,6 +79,8 @@ class ToolJob:
     parent: str = ""
     # A run_code result too long for the model: its kept whole text (code_mode.keep).
     result_id: str = ""
+    # run_job began it. An interrupted call that never started did not run.
+    started: bool = False
 
 
 def jobs_from_calls(calls: list[dict], completion_i: int) -> list[ToolJob]:
@@ -400,11 +402,19 @@ def _code_clip(text: str, result_id: str = "") -> str:
                          f"not run its edits or commands again.{rest}]") + calls
 
 
+def _interrupted(job: ToolJob) -> str:
+    if not job.started:
+        return "Tool interrupted before it started: this call did not run. Send it again if it is still needed."
+    return "Tool interrupted mid-run: its outcome is unknown. Check its state before sending it again."
+
+
 def _code_result(group: list[ToolJob]) -> str:
     head = group[0]
     failed = head.trace.get("kind") == "internal_exception"
     if head.done and head.text and head.text != "Tool interrupted." and not failed:
         return _code_clip(head.text, head.result_id)
+    if not head.started and len(group) == 1:
+        return _interrupted(head)
     # Cut off mid-run (a stop, a restart or a failure inside Fuse): what
     # changed, and what may have.
     lines = []
@@ -416,9 +426,10 @@ def _code_result(group: list[ToolJob]) -> str:
         except (ValueError, RecursionError):
             args = {}
         unknown = not j.done or j.trace.get("status") == "interrupted"
-        lines.append(" ".join(f"- {j.name} {subject(args)}".split()) + (": outcome unknown" if unknown else ": done"))
+        outcome = ": not run" if j.done and unknown and not j.started else ": outcome unknown" if unknown else ": done"
+        lines.append(" ".join(f"- {j.name} {subject(args)}".split()) + outcome)
     # Unknown outcomes first, so the clip drops finished edits before them.
-    lines.sort(key=lambda line: line.endswith(": done"))
+    lines.sort(key=lambda line: not line.endswith(": outcome unknown"))
     text = ("Tool failed inside Fuse" if failed else "Tool interrupted") + ": the code stopped before it finished."
     return _tool_result_clip(head.name, text + (" Its edits and commands:\n" + "\n".join(lines) if lines
                                                else " It had started no file edit or command."))
@@ -428,12 +439,13 @@ def _call_result(group: list[ToolJob]) -> str:
     if group[0].name == "run_code" and not group[0].parent:
         return _code_result(group)
     if len(group) == 1:
+        if group[0].text == "Tool interrupted.":
+            return _interrupted(group[0])
         return _tool_result_clip(group[0].name, group[0].text or "")
     parts = []
     for j in group:
         # Only a mid-round checkpoint has unfinished hosts; a resume reads it.
-        text = _tool_result_clip(j.name, j.text or "") if j.done else (
-            "Interrupted before this host finished; check its state before re-running.")
+        text = _tool_result_clip(j.name, j.text or "") if j.done and j.text != "Tool interrupted." else _interrupted(j)
         if not text.startswith("From host "):
             text = f"From host {json.loads(j.arguments).get('host')}:\n{text}"
         parts.append(text)

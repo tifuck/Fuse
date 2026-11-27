@@ -2092,10 +2092,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                         continue
                     trace = job.trace if isinstance(getattr(job, "trace", None), dict) else {}
                     st = trace.get("status") or ""
-                    # over_call_cap is a server-side refusal, not a model or
-                    # provider failure; it must not consume the stall budget.
+                    # over_call_cap is a server-side refusal and not_run a call
+                    # the step gate held back after an earlier failure, not a
+                    # model or provider failure; neither consumes the stall budget.
                     if st in ("error", "interrupted"):
-                        if trace.get("kind") != "over_call_cap":
+                        if trace.get("kind") not in ("over_call_cap", "not_run"):
                             stall_fails += 1
                     else:
                         stall_fails = 0

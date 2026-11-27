@@ -207,6 +207,18 @@ def rows_thread() -> list[dict]:
                  cwd=PROJECT, exit_code=0, execution_duration_ms=64000, output=PYTEST),
             "Both runs pass: 99 tests each, no failures, same order. It isn't flaky.",
             minutes_ago=15, elapsed_s=372),
+        user("Drop the unused import, run the tests and tag the release."),
+        # One step of three calls: the step gate held the tag back after the tests failed.
+        reply(
+            tool("search_replace", path=f"{PROJECT}/app/net.py", preview="@@ -1 +1 @@\n-import asyncio, time\n+import asyncio",
+                 lines_added=1, lines_removed=1),
+            tool("run_terminal_command", command="scripts/test.sh", description="Run the tests", cwd=PROJECT, exit_code=1,
+                 execution_duration_ms=5200, output="..F.\nFAILED tests/test_net.py::test_retry_limit - assert 5 == 8\n1 failed, 3 passed in 0.82s"),
+            tool("run_terminal_command", status="error", kind="not_run", command="git tag v1.4.0", description="Tag the release",
+                 cwd=PROJECT, error="[Fuse] Not run: run_terminal_command scripts/test.sh exited 1 earlier in this step. Calls that "
+                                    "change a host run in order and stop at the first failure. Send this call again when it is still needed."),
+            "The tests fail (`test_retry_limit` expects 8), so the release is not tagged yet.",
+            minutes_ago=10, elapsed_s=14),
     ]
 
 

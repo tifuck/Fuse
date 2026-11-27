@@ -88,6 +88,39 @@ def _same_host(a: str, b: str) -> bool:
     return not a or not b or a == b
 
 
+def _bound_alias(user_id: int, host_id) -> str:
+    """The bound host's alias, lowercased; "" when there is none."""
+    from .. import hosts
+
+    try:
+        row = hosts.host_row(user_id, int(host_id)) if host_id else None
+    except Exception:
+        logger.debug("bound host lookup failed", exc_info=True)
+        row = None
+    return str(row["alias"] or "").strip().lower() if row else ""
+
+
+def _gate_failure(job: ToolJob) -> str:
+    """How an earlier host-changing call of the step failed, as the skip text
+    words it; "" when a later call on its host may still run. Asked only
+    while the user has not stopped the round, so an interrupt is a failure."""
+    status, code = job.trace.get("status"), job.trace.get("exit_code")
+    if status == "error":
+        return "failed"
+    if status == "interrupted":
+        return "was interrupted"
+    if job.name != "run_terminal_command":
+        return ""
+    if type(code) is int and code != 0:
+        return f"exited {code}"
+    try:
+        background = json.loads(job.arguments or "{}").get("background") is True
+    except (ValueError, AttributeError, RecursionError):
+        background = False
+    # A foreground command moved to the background has not finished yet.
+    return "moved to the background and has not finished" if status == "running" and not background else ""
+
+
 def _split_host_lists(jobs: list[ToolJob], user_id: int) -> list[ToolJob]:
     """One job per host for a run_terminal_command host list, so ordering,
     permissions, command jobs and transcript rows stay per host. The jobs
@@ -260,6 +293,7 @@ async def run_tools(
 
     async def run_job(job: ToolJob, phase: str):
         started = time.monotonic()
+        job.started = not cancel.is_set()
         if cancel.is_set():
             job.text = "Tool interrupted."
             job.trace = {"name": job.name, "status": "interrupted", "kind": "interrupted", "id": job.event_id}
@@ -607,15 +641,51 @@ async def run_tools(
                 else:
                     await run_job(j, _job_phase(j.name))
 
-            async def run_after(deps, j):
+            # The gate: a host-changing call does not run once an earlier one
+            # on its host failed in this step, so dependent calls sent
+            # together stop at the first failure. A user stop is not a
+            # failure: run_job settles those calls as interrupted.
+            gate_seen: list[tuple[ToolJob, str]] = []
+            causes: dict[str, tuple[ToolJob, str]] = {}
+
+            async def run_after(deps, j, earlier=()):
                 if deps:
                     await asyncio.gather(*deps, return_exceptions=True)
+                if not cancel.is_set():
+                    for e in earlier:
+                        what = _gate_failure(e) if e.done else ""
+                        if what:
+                            await skip(j, *causes.get(e.event_id, (e, what)))
+                            return
                 await run_one(j)
+
+            async def skip(j, cause, what):
+                causes[j.event_id] = (cause, what)
+                try:
+                    args = json.loads(cause.arguments or "{}")
+                except (ValueError, RecursionError):
+                    args = {}
+                said = " ".join(f"{cause.name} {code_mode.subject(args if isinstance(args, dict) else {})}".split())
+                j.text = (f"[Fuse] Not run: {said} {what} earlier in this step. Calls that change a host run in "
+                          "order and stop at the first failure. Send this call again when it is still needed.")
+                # Not logged as a tool failure: the gate worked, no tool failed.
+                # The row still names what was held back.
+                shown = {k: v for k, v in _running_event(j).items() if k in ("host", "path", "command", "cwd", "description")}
+                j.trace = {"name": j.name, **shown, "status": "error", "kind": "not_run", "error": j.text, "id": j.event_id}
+                j.done = True
+                await persist_now()
+                emit({"event": "tool", **j.trace})
 
             search_tasks: list[asyncio.Task] = []
             host_seen: list[tuple[asyncio.Task, bool, str]] = []
             artifact_seen: list[asyncio.Task] = []
             ordered = [j for j in runnable if j.name != "read_url"] + [j for j in runnable if j.name == "read_url"]
+            # The gate compares real hosts: an omitted host is the bound one, so a
+            # failure on another named host stops nothing here. run_code names
+            # no host and may change any, so it gates against every host.
+            bound = ""
+            if sum(j.name in _HOST_MUTATING_TOOLS for j in runnable) > 1:
+                bound = await asyncio.to_thread(_bound_alias, user_id, session.get("bound_host_id"))
             async with asyncio.TaskGroup() as tg:
                 for j in ordered:
                     host = _host_key(j.arguments) if j.name in _HOST_MUTATING_TOOLS or j.name in _HOST_READ_TOOLS else ""
@@ -629,7 +699,12 @@ async def run_tools(
                         deps = list(artifact_seen)
                     else:
                         deps = []
-                    task = tg.create_task(run_after(deps, j))
+                    earlier = ()
+                    if j.name in _HOST_MUTATING_TOOLS:
+                        gate_host = "" if j.name == "run_code" else host or bound
+                        earlier = [e for e, h in gate_seen if _same_host(h, gate_host)]
+                        gate_seen.append((j, gate_host))
+                    task = tg.create_task(run_after(deps, j, earlier))
                     if j.name == "web_search":
                         search_tasks.append(task)
                     elif j.name in _HOST_MUTATING_TOOLS or j.name in _HOST_READ_TOOLS:

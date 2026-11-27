@@ -91,6 +91,29 @@ def test_a_run_of_failing_calls_drops_the_tools(fresh_db):
     assert chats.get_thread(uid, thread_id)["messages"][-1]["content"] == "Nothing worked."
 
 
+def test_calls_the_step_gate_held_back_do_not_count_as_failing_calls(fresh_db):
+    uid = quick_user()
+    skipped = chat_runtime.STALL_FAIL_CALLS
+
+    def answer(name, args):
+        if args.get("command") == "make":
+            raise RuntimeError("down")
+        return "ok"
+
+    step = [("c0", "run_terminal_command", {"command": "make"})]
+    step += [(f"c{i + 1}", "write_file", {"path": f"f{i}.txt", "content": "x"}) for i in range(skipped)]
+    with _notices() as notices, fake_tools(answer) as tools, \
+            fake_provider(tool_call_frames(step), text_frames("Make failed.")) as provider:
+        thread_id, run = run_async(run_turn(uid, "build", thread=tool_thread(uid)))
+
+    assert run["status"] == "completed"
+    assert [name for name, _ in tools.calls] == ["run_terminal_command"]
+    assert not any("failed in a row" in str(n) for n in notices)
+    assert provider.bodies[1].get("tool_choice") != "none"
+    results = [m["content"] for m in provider.bodies[1]["messages"] if m.get("role") == "tool"]
+    assert len(results) == skipped + 1 and all(r.startswith("[Fuse] Not run:") for r in results[1:])
+
+
 def test_a_tool_call_cut_off_every_time_fails_after_the_salvages(fresh_db):
     uid = quick_user()
     salvages = chat_runtime.MAX_LENGTH_SALVAGES
