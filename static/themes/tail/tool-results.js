@@ -106,11 +106,12 @@ function consoleDiffCounts(diff) {
 // An edit's line counts: the server's when it sent them, else the diff's; a
 // write without a diff adds its whole body.
 function consoleEditCounts(trace) {
+    const added = Number(trace.added ?? trace.lines_added);
+    const removed = Number(trace.removed ?? trace.lines_removed);
+    if (Number.isFinite(added) && Number.isFinite(removed)) return { added, removed };
     const diff = consoleEditDiff(trace);
     const body = typeof trace.content === "string" ? trace.content.replace(/\s+$/, "") : "";
     const counted = diff ? consoleDiffCounts(diff) : { added: trace.name === "write_file" && body ? body.split("\n").length : 0, removed: 0 };
-    const added = Number(trace.added ?? trace.lines_added);
-    const removed = Number(trace.removed ?? trace.lines_removed);
     return { added: Number.isFinite(added) ? added : counted.added, removed: Number.isFinite(removed) ? removed : counted.removed };
   }
 
