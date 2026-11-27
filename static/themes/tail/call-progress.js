@@ -239,6 +239,8 @@ function ccInterruptedFold(trace, shell) {
 // other the fuller one is the error, since it is what the model was told. A
 // command's own output stays its output unless it only repeats the error.
 function ccFailure(trace) {
+    const notRun = deps.ccNotRun(trace);
+    if (notRun) return { error: notRun, output: "" };
     const error = String((trace && (trace.error || trace.summary)) || "").trim();
     // Traces saved before calls kept their output carry only the preview.
     const stored = trace && (typeof trace.output === "string" ? trace.output

@@ -244,6 +244,8 @@ function ccInterruptedFold(trace, shell) {
 // other the fuller one is the error, since it is what the model was told. A
 // command's own output stays its output unless it only repeats the error.
 function ccFailure(trace) {
+    const notRun = deps.ccNotRun(trace);
+    if (notRun) return { error: notRun, output: "" };
     const raw = String((trace && (trace.error || trace.summary)) || "").trim();
     // A bare execution state ("timed_out") reads as words.
     const error = /^[a-z]+(?:_[a-z]+)+$/.test(raw) ? raw.charAt(0).toUpperCase() + raw.slice(1).replace(/_/g, " ") : raw;

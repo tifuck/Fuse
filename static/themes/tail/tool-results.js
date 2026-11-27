@@ -240,7 +240,7 @@ function consoleFold(trace, presentation, verbose) {
       // A failure prints red with its "Error: " mark, like every other family
       // (ccErrorFold); an error that already carries a mark is kept verbatim.
       const reason = failure ? deps.providerErrorLine(deps.ccFlat(failure.error)) : status;
-      const failedHead = failed && !/^(Error|Cancelled): /.test(reason) ? `Error: ${reason}` : reason;
+      const failedHead = failed && !/^(Error|Cancelled|Not run): /.test(reason) ? `Error: ${reason}` : reason;
       const head = nonzero ? `Exit code ${exit}` : failed ? failedHead
         : wait ? (deps.executionState(trace) !== "running" ? "" : stillRunning ? "Still running" : "Returned while the command was still running")
         : deps.toolBackground(trace) ? status : "";
@@ -312,8 +312,8 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     // A failed run reads like a finished one, its calls first, with the error
     // on one line under them.
     const callsHtml = total ? `<span class="chat-console-codecount"><b>${total}</b> ${noun(total)}:</span> ${what}` : `<span class="chat-console-codecount">No calls ran</span>`;
-    const errorLine = String(trace.error || "run_code failed").split("\n").find((line) => line.trim()) || "run_code failed";
-    const statusHtml = failed ? `${callsHtml} <span class="chat-console-codeerr">${deps.escapeHtml(/^Error: /.test(errorLine) ? errorLine : `Error: ${errorLine}`)}</span>`
+    const errorLine = String(deps.ccNotRun(trace) || trace.error || "run_code failed").split("\n").find((line) => line.trim()) || "run_code failed";
+    const statusHtml = failed ? `${callsHtml} <span class="chat-console-codeerr">${deps.escapeHtml(/^(Error|Not run): /.test(errorLine) ? errorLine : `Error: ${errorLine}`)}</span>`
       : interrupted ? `Stopped, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
       : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
       : total ? callsHtml : "No calls";

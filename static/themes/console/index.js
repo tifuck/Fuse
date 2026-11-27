@@ -163,6 +163,7 @@ export function createConsoleTheme(runtime) {
     get toolPresentation() { return runtime.toolPresentation; },
   }));
   Object.assign(theme, createToolResults({
+    get ccNotRun() { return theme.ccNotRun; },
     get providerErrorLine() { return theme.providerErrorLine; },
     get agentSubject() { return theme.agentSubject; },
     get ccAgentLastCall() { return theme.ccAgentLastCall; },
@@ -226,6 +227,7 @@ export function createConsoleTheme(runtime) {
     get todoClosed() { return runtime.todoClosed; },
   }));
   Object.assign(theme, createToolRows({
+    get ccNotRun() { return theme.ccNotRun; },
     get STEP_ICONS() { return theme.STEP_ICONS; },
     get agentTraceWorkMs() { return theme.agentTraceWorkMs; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
@@ -323,6 +325,7 @@ export function createConsoleTheme(runtime) {
     get ccDuration() { return theme.ccDuration; },
     get ccElapsedText() { return theme.ccElapsedText; },
     get ccErrorFold() { return theme.ccErrorFold; },
+    get ccNotRun() { return theme.ccNotRun; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
     get ccFlat() { return theme.ccFlat; },
     get ccGenSpeed() { return theme.ccGenSpeed; },

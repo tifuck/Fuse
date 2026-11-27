@@ -223,7 +223,7 @@ function consoleFold(trace, presentation, verbose, oneLine = false) {
       // A failure prints red with its "Error: " mark, like every other family
       // (ccErrorFold); an error that already carries a mark is kept verbatim.
       const reason = failure ? deps.providerErrorLine(deps.ccFlat(failure.error)) : status;
-      const failedHead = failed && !/^(Error|Cancelled): /.test(reason) ? `Error: ${reason}` : reason;
+      const failedHead = failed && !/^(Error|Cancelled|Not run): /.test(reason) ? `Error: ${reason}` : reason;
       const head = nonzero ? `Exit code ${exit}` : failed ? failedHead
         : wait ? (deps.executionState(trace) !== "running" ? "" : stillRunning ? "Still running" : "Returned while the command was still running")
         : deps.toolBackground(trace) ? status : "";

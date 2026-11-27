@@ -40,7 +40,7 @@ function toolDetailHtml(trace, failed, running) {
     const sections = [];
     const hasImage = trace.name === "read_file" && trace.image && !failed && !running;
     if (hasImage) sections.push(toolImageHtml(trace));
-    const error = failed ? trace.error || trace.summary || trace.preview || "The tool failed without an error message."
+    const error = failed ? deps.ccNotRun(trace) || trace.error || trace.summary || trace.preview || "The tool failed without an error message."
       : ["interrupted", "cancelled"].includes(trace.status) || ["cancelled", "interrupted", "lost"].includes(deps.executionState(trace)) ? trace.error || "" : "";
     if (error) sections.push(deps.failNoteHtml(error));
     const inputs = [trace.command, trace.path, trace.pattern, trace.url, deps.searchQueries(trace).join("\n"), trace.description, trace.title];
@@ -292,7 +292,7 @@ function toolStepHtml(trace, index, live, open, openMap, opts = {}) {
         ? (deps.toolBackground(trace) ? "in the background" : presentation.statusLabel === "Stopping" ? "Stopping…" : "")
         : stopText ? (deps.rowSaysStopped(trace, presentation) ? "" : stopWord(stopText))
         : fold.status || (opts.oneLine && (failed || dotState === "error")
-          ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : errorLine(trace.error || trace.summary) || "failed")
+          ? (exit !== null && exit !== 0 ? `Exit code ${exit}` : deps.ccNotRun(trace).replace(/^Not run: /, "") || errorLine(trace.error || trace.summary) || "failed")
           : "");
       // A pending call names its deadline at the end of the line under it
       // ("Waiting for output… (timeout: 2m)"), and that line exists even when

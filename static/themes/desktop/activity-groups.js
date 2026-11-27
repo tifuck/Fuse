@@ -440,7 +440,8 @@ function scriptRowHtml(item, live, openMap) {
     const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
     // Steps, as the summary line counts them; a syntax error names its line.
     const steps = `${total} ${total === 1 ? "step" : "steps"}`;
-    const error = String(trace.error || "failed").split("\n")[0];
+    const notRun = deps.ccNotRun(trace);
+    const error = String(notRun.replace(/^Not run: /, "") || trace.error || "failed").split("\n")[0];
     const at = error.match(/^(?:Error: )?line (\d+): (\w*Error)\b/);
     const result = presentation.failed ? (at ? `${at[2]} on line ${at[1]}` : error)
       : presentation.interrupted ? `${finished} of ${steps} done` : steps;
@@ -462,7 +463,9 @@ function scriptRowHtml(item, live, openMap) {
     }
     if (parts.code) rows.push(codeRowHtml(trace, parts, `${key}:code`, deps.stepOpenAt(openMap, `${key}:code`), deps.escapeHtml(result)));
     // A description reads as a sentence, like a described command's.
-    const said = trace.description ? deps.rowSentence(deps.ccFlat(trace.description), presentation) : null;
+    // One the step gate held back says it did not run.
+    const said = (trace.description ? deps.rowSentence(deps.ccFlat(trace.description), presentation, false, Boolean(notRun)) : null)
+      || (notRun ? { lead: "Did not run", rest: name } : null);
     const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described">${said ? `<span class="chat-tool-action">${deps.escapeHtml(said.lead)}</span>` : ""}<span class="chat-console-val">${deps.escapeHtml(said ? said.rest : name)}</span></span>` +
       `<span class="chat-console-result-text">${deps.escapeHtml(result)}</span>`;
     return (
