@@ -21,6 +21,11 @@ import threading
 import time
 from pathlib import Path
 
+try:
+    import brotli
+except ImportError:
+    brotli = None
+
 ROOT = Path(__file__).resolve().parents[1] / "static"
 _ROOT_REAL = ROOT.resolve()
 
@@ -42,14 +47,20 @@ _CSS_URL = re.compile(r"""(url\(\s*)(["']?)([^"')\s]+)\2(\s*\))""")
 # Static files only change on deploy in production; dev edits them in place,
 # so stat results are trusted for this long before a file is re-read.
 STAT_TTL = 1.0
-# Bodies at least this long are served gzipped to clients that accept it.
+# Bodies at least this long are served compressed to clients that accept it.
 GZIP_MIN = 1024
+# Optional (the brotli module): ~14% under gzip -9 on these files. Quality 10
+# is within 2% of 11 at a third of the time (~0.2 s for the biggest
+# stylesheet), and runs on first request, not in warm(): all of static/ at 10
+# takes ~4 s.
+BROTLI_QUALITY = 10
 
 _lock = threading.RLock()
 _files: dict[str, dict] = {}
 _versions: dict[str, str] = {}
 _bodies: dict[str, tuple[str, bytes]] = {}
 _gzipped: dict[str, tuple[str, bytes]] = {}
+_brotlied: dict[str, tuple[str, bytes]] = {}
 _preload_lists: dict[str, list[str]] = {}
 _inlining: set[str] = set()
 # A production process serves the tree it started with (a deploy restarts
@@ -250,24 +261,35 @@ def rewritten(rel: str) -> tuple[str, bytes] | None:
         return body
 
 
-def served(rel: str, gzip_ok: bool) -> tuple[str, bytes, str | None] | None:
+def served(rel: str, gzip_ok: bool, br_ok: bool = False) -> tuple[str, bytes, str | None] | None:
     """(version, body, content encoding) to send for a script or stylesheet.
-    The gzip body is compressed once per version at the highest level;
-    GZipMiddleware would redo it at level 3 on every request."""
+    The compressed body is made once per version at a high level (brotli
+    when the module is installed and the client takes it, else gzip -9);
+    GZipMiddleware would redo gzip at level 3 on every request."""
     found = rewritten(rel)
     if found is None:
         return None
     value, body = found
-    if not gzip_ok or len(body) < GZIP_MIN:
+    if len(body) < GZIP_MIN:
+        return value, body, None
+    if br_ok and brotli is not None:
+        cache, encoding = _brotlied, "br"
+    elif gzip_ok:
+        cache, encoding = _gzipped, "gzip"
+    else:
         return value, body, None
     rel = _norm(rel)
     with _lock:
-        hit = _gzipped.get(rel)
+        hit = cache.get(rel)
     if not hit or hit[0] != value:
-        hit = (value, gzip.compress(body, compresslevel=9, mtime=0))
+        if encoding == "br":
+            packed = brotli.compress(body, quality=BROTLI_QUALITY)
+        else:
+            packed = gzip.compress(body, compresslevel=9, mtime=0)
+        hit = (value, packed)
         with _lock:
-            _gzipped[rel] = hit
-    return value, hit[1], "gzip"
+            cache[rel] = hit
+    return value, hit[1], encoding
 
 
 def preloads(entry: str) -> list[str]:

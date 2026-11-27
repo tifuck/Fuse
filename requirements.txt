@@ -23,3 +23,6 @@ regex>=2024.11.6
 selectolax==1.0.0
 # V8 isolate for run_code (app/code_worker.py); without it run_code is off.
 mini-racer==0.14.1
+# Brotli for /static scripts and styles (app/static_assets.py); without it they
+# go out gzip. httpx then also accepts br. < 1.2.1 has CVE-2026-111497 (decoder).
+brotli>=1.2.1

@@ -524,7 +524,8 @@ class VersionedStaticFiles(StaticFiles):
             request_headers = dict(
                 (k.decode("latin-1").lower(), v.decode("latin-1")) for k, v in scope.get("headers") or []
             )
-            found = await asyncio.to_thread(static_assets.served, path, "gzip" in request_headers.get("accept-encoding", ""))
+            accept = request_headers.get("accept-encoding", "")
+            found = await asyncio.to_thread(static_assets.served, path, "gzip" in accept, "br" in accept)
             if found:
                 version, body, encoding = found
                 # Only the current bytes are immutable under their version. A
@@ -543,6 +544,10 @@ class VersionedStaticFiles(StaticFiles):
                     return Response(status_code=304, headers=headers)
                 if scope.get("method") == "HEAD":
                     return Response(headers={**headers, "Content-Length": str(len(body))}, media_type=media)
+                if not encoding:
+                    # GZipMiddleware adds its own Vary to a plain body it
+                    # could compress; one below its minimum never varies.
+                    del headers["Vary"]
                 return Response(body, headers=headers, media_type=media)
         response = await super().get_response(path, scope)
         if response.status_code not in (200, 304):

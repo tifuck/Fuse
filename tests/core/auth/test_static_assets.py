@@ -1,6 +1,9 @@
 """Static files: content versions and preload lists (app/static_assets.py) and
 how /static serves an already compressed file (app.main.VersionedStaticFiles).
 """
+import gzip
+import types
+
 import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -19,7 +22,7 @@ def tree(tmp_path, monkeypatch):
     monkeypatch.setattr(static_assets, "_ROOT_REAL", tmp_path.resolve())
     monkeypatch.setattr(static_assets, "STAT_TTL", 0)
     monkeypatch.setattr(static_assets, "_frozen", False)
-    for cache in ("_files", "_versions", "_bodies", "_gzipped", "_preload_lists"):
+    for cache in ("_files", "_versions", "_bodies", "_gzipped", "_brotlied", "_preload_lists"):
         monkeypatch.setattr(static_assets, cache, {})
 
     def write(rel, text):
@@ -79,3 +82,65 @@ def test_a_gz_file_is_served_as_it_is():
     # The same middleware does compress a plain file of that size.
     plain = TestClient(app).get("/static/dict/LICENSE", headers={"accept-encoding": "gzip"})
     assert plain.headers.get("content-encoding") == "gzip"
+
+
+def _static_get(path, accept):
+    """Headers and the bytes on the wire (not decoded) of one /static GET
+    through the app's static mount behind GZipMiddleware."""
+    from app import main
+
+    app = Starlette(
+        routes=[Mount("/static", main.VersionedStaticFiles(directory=str(static_assets.ROOT)))],
+        middleware=[Middleware(GZipMiddleware, minimum_size=1024)],
+    )
+    with TestClient(app).stream("GET", path, headers={"accept-encoding": accept}) as got:
+        assert got.status_code == 200
+        return got.headers, b"".join(got.iter_raw())
+
+
+def test_scripts_go_out_brotli_only_when_the_module_is_installed(tree, monkeypatch):
+    """Brotli is optional: with the module, a client that takes br gets a body
+    compressed once per version; without it, or for a client without br, the
+    gzip body as before."""
+    calls = []
+
+    def compress(data, quality):
+        calls.append(quality)
+        return b"br:" + data[:6]
+
+    monkeypatch.setattr(static_assets, "brotli", types.SimpleNamespace(compress=compress))
+    tree("big.js", "export const x = '" + "a" * 4000 + "';\n")
+
+    for _ in range(2):
+        headers, raw = _static_get("/static/big.js", "gzip, deflate, br")
+        assert headers["content-encoding"] == "br"
+        assert headers["vary"] == "Accept-Encoding"
+        assert raw == b"br:export"
+    assert calls == [static_assets.BROTLI_QUALITY]
+
+    headers, raw = _static_get("/static/big.js", "gzip, deflate")
+    assert headers["content-encoding"] == "gzip"
+    assert gzip.decompress(raw).startswith(b"export const x")
+
+    monkeypatch.setattr(static_assets, "brotli", None)
+    headers, raw = _static_get("/static/big.js", "gzip, br")
+    assert headers["content-encoding"] == "gzip"
+    assert headers["vary"] == "Accept-Encoding"
+    headers, raw = _static_get("/static/big.js", "br")
+    assert "content-encoding" not in headers
+    assert raw.startswith(b"export const x")
+
+
+def test_a_plain_script_names_accept_encoding_once(tree):
+    """GZipMiddleware adds Vary to a plain body it could compress; the static
+    mount used to add its own as well ("Accept-Encoding, Accept-Encoding")."""
+    tree("big.js", "export const x = '" + "a" * 4000 + "';\n")
+    tree("small.js", "export const y = 1;\n")
+
+    headers, raw = _static_get("/static/big.js", "identity")
+    assert "content-encoding" not in headers
+    assert headers["vary"] == "Accept-Encoding"
+    # Under the minimum nothing is ever compressed, so the body does not vary.
+    headers, raw = _static_get("/static/small.js", "gzip")
+    assert "content-encoding" not in headers
+    assert "vary" not in headers
