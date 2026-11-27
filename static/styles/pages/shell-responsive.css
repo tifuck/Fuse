@@ -4,10 +4,10 @@
   .sources-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 960px) {
-  .grid-2 { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-  .pool-account { grid-template-columns: 1fr; gap: 0.85rem; }
+  .pool-account { grid-template-columns: minmax(0, 1fr); gap: 0.85rem; }
   .pool-account .account-head {
     height: auto;
     padding-right: 0;
@@ -18,13 +18,13 @@
     border-top: 1px solid var(--raise);
   }
   .pool-account .stat-col { grid-template-columns: minmax(8rem, auto) minmax(0, 1fr); }
-  .catalog-grid { grid-template-columns: 1fr; }
+  .catalog-grid { grid-template-columns: minmax(0, 1fr); }
 }
 /* Settings pages sit beside the rail: these follow the page box (settings.css). */
 @container page (max-width: 56rem) {
-  .api-docs { grid-template-columns: 1fr; }
+  .api-docs { grid-template-columns: minmax(0, 1fr); }
   .docs-toc { display: none; }
-  :where(html:not(.is-chat-root)) .steps { grid-template-columns: 1fr; }
+  :where(html:not(.is-chat-root)) .steps { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 800px) {
   html.is-settings-root { scrollbar-gutter: auto; }
@@ -32,7 +32,7 @@
   :where(html:not(.is-chat-root)) body.is-nav { overflow: hidden; }
   :where(html:not(.is-chat-root)) form.stack .btn { align-self: stretch; width: 100%; }
   .row-actions { min-width: 0; }
-  .key-create { grid-template-columns: 1fr; }
+  .key-create { grid-template-columns: minmax(0, 1fr); }
 
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-card { min-height: 0; padding: 0.9rem 1rem; }
@@ -68,7 +68,7 @@
   .account-head { flex-wrap: wrap; }
   .band-head { flex-wrap: wrap; }
   .account-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.85rem;
   }
   .stat-col { padding-right: 0; }
@@ -79,11 +79,11 @@
     border-top: 1px solid var(--raise);
   }
   .stat-col .usage-meter { max-width: none; }
-  .pool-account .stat-col { grid-template-columns: 1fr; gap: 0.45rem; }
+  .pool-account .stat-col { grid-template-columns: minmax(0, 1fr); gap: 0.45rem; }
   .pool-account .stat-main { min-width: 0; }
   .head-actions { flex-wrap: wrap; }
   
-  :where(html:not(.is-chat-root)) .auth-main { grid-template-columns: 1fr; }
+  :where(html:not(.is-chat-root)) .auth-main { grid-template-columns: minmax(0, 1fr); }
   .auth-brand { padding: 3.5rem 1.5rem 1.25rem; }
   .auth-pane {
     padding: 0 1.5rem 3rem;
@@ -165,14 +165,14 @@
   :where(html:not(.is-chat-root)) .log .nows { white-space: normal; overflow-wrap: anywhere; }
   .key-model { display: inline; margin: 0; overflow-wrap: anywhere; }
 
-  .agent-prompt { grid-template-columns: 1fr; }
-  .provider-row { grid-template-columns: 1fr; gap: 0.85rem; }
+  .agent-prompt { grid-template-columns: minmax(0, 1fr); }
+  .provider-row { grid-template-columns: minmax(0, 1fr); gap: 0.85rem; }
   .param-row { grid-template-columns: 5.5rem 4rem minmax(0, 1fr); gap: 0.6rem; }
   .code-frame pre { font-size: 0.68rem; }
-  .error-grid { grid-template-columns: 1fr; }
+  .error-grid { grid-template-columns: minmax(0, 1fr); }
   .error-grid > div:nth-child(odd), .error-grid > div:nth-child(even) { padding-left: 0; padding-right: 0; border-left: 0; }
   .docs-callout a { width: 100%; margin-left: 0; }
-  .docs-note { grid-template-columns: 1fr; gap: 0.35rem; }
+  .docs-note { grid-template-columns: minmax(0, 1fr); gap: 0.35rem; }
   .route-title { flex-wrap: wrap; }
 }
 @media (max-width: 520px) {
@@ -181,7 +181,7 @@
   
   .metric-value { font-size: 1.25rem; }
 
-  .param-row { grid-template-columns: 1fr; gap: 0.15rem; padding: 0.55rem 0; }
+  .param-row { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; padding: 0.55rem 0; }
   :where(html:not(.is-chat-root)) .device .code {
     font-size: 1.55rem;
     letter-spacing: 0.1em;
@@ -189,7 +189,7 @@
   }
   .auth-brand { padding: 2.5rem 1.15rem 1rem; }
   .auth-pane { padding: 0 1.15rem 2.5rem; }
-  .catalog-metrics, .sources-metrics { grid-template-columns: 1fr; }
+  .catalog-metrics, .sources-metrics { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (hover: none) {

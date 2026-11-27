@@ -55,6 +55,9 @@
   flex-wrap: wrap;
 }
 .modal-actions form { margin: 0; }
+/* A dialog taller than the screen scrolls; its buttons stay in reach. */
+.modal-shell, .modal-shell > form { background: inherit; }
+:is(.modal-shell, .modal-shell > form) > .modal-actions { position: sticky; bottom: 0; background: inherit; }
 .modal-confirm {
   width: min(24rem, calc(100% - 2rem));
   margin: auto;

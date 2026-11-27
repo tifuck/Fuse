@@ -298,6 +298,7 @@ html[data-chat-theme="ivory"] .uz {
   overflow-x: auto;
   scrollbar-width: none;
 }
+.uz-tabs::-webkit-scrollbar { display: none; }
 .uz-tabs button {
   position: relative;
   flex: none;
@@ -460,6 +461,7 @@ html[data-chat-theme="ivory"] .uz {
 .uz-card-head form { margin: 0; flex: none; }
 .uz-pricing-table { overflow-x: auto; }
 .uz-pricing-table form { margin: 0; }
+.uz-pricing-table td[data-label="Model"] { min-width: 14ch; white-space: normal; overflow-wrap: anywhere; }
 .uz-price-form { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 0.6rem; align-items: end; }
 .uz-price-form .uz-wide { grid-column: span 2; }
 .uz-price-form label { display: grid; gap: 0.25rem; color: var(--mute); font-size: 0.72rem; }
@@ -553,7 +555,12 @@ html[data-chat-theme="ivory"] .uz {
   .uz-keys form { grid-column: 2; grid-row: 1; }
   .uz-keys .btn.sm, .uz-key-create .btn.sm, .uz-key-create input { height: 2.5rem; }
   .uz-pricing-bar { flex-direction: column; }
-  /* Pricing rows become labelled cards. */
+  .uz-price-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Pricing rows become labelled cards when the page box, not the viewport, is
+   too narrow for the table: beside the rail that starts well above 720px. */
+@container page (max-width: 46rem) {
   .uz-pricing-table { margin: 0; padding: 0; overflow: visible; }
   .uz-pricing-table thead { display: none; }
   .uz-pricing-table table, .uz-pricing-table tbody { display: block; }
@@ -563,7 +570,6 @@ html[data-chat-theme="ivory"] .uz {
   .uz-pricing-table td.num { text-align: left; }
   .uz-pricing-table td[data-label]::before { content: attr(data-label); display: block; color: var(--mute); font-size: 0.66rem; }
   .uz-pricing-table td.uz-empty { grid-column: 1 / -1; text-align: center; }
-  .uz-price-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
