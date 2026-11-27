@@ -96,6 +96,8 @@ export function createStream(ctx) {
               // of it is in this row; the transcript is as it was.
               apply.acceptLabels(payload);
               S.serverRevision = payload.revision;
+            } else if (S.sendingThread === event.thread_id) {
+              S.sendRaced = true;
             } else if (S.activeRun && !Array.isArray(payload.messages) && !payload.transcript_changed) {
               S.serverRevision = payload.revision;
             } else {
@@ -213,7 +215,11 @@ export function createStream(ctx) {
     } else if (event.thread_id === S.currentId && event.id > S.viewCursor && event.type.startsWith("run.")) {
       S.lastRunReceiptAt = Date.now();
       if (event.type === "run.started" || !S.activeRun || S.activeRun.id !== payload.run_id) {
-        await apply.reconcileThread();
+        // A turn sent from this view is in flight: its reply is the chat as of
+        // its run.started, and what this socket carried meanwhile is replayed
+        // from there once that reply lands (turns/send.js), so no read here.
+        if (S.sendingThread === event.thread_id) S.sendRaced = true;
+        else await apply.reconcileThread();
       } else if (event.type === "run.tick") {
         // Compacted before the socket learned this thread is open: reopen it
         // here (once per event), and the patches come again whole.
@@ -479,5 +485,6 @@ export function createStream(ctx) {
   return {
     connectSync,
     receiveEvent,
+    replayGap,
   };
 }

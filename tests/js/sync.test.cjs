@@ -48,7 +48,7 @@ function baseState(overrides = {}) {
     pendingTurns: new Map(), queuedTurns: [], acceptedQueueCommands: new Set(), sendNowRuns: new Set(),
     locallyStoppedRuns: new Set(), queueEl: null, queueListEl: null, historyQuery: '', searchThreads: [],
     searchArchived: [], searchActiveQuery: '', searchGen: 0, renameSaving: null, agentsRows: [], agentsOpen: false,
-    agentViewId: '', SLASH_COMMANDS: [], syncState: undefined,
+    agentViewId: '', SLASH_COMMANDS: [], syncState: undefined, sendingThread: '', sendRaced: false,
   }, overrides);
   S.log = { children: S.messages.map((msg) => article(msg.id)), childElementCount: S.messages.length, appendChild: noop };
 }
@@ -184,6 +184,20 @@ test('a progress update that had to refetch keeps the snapshot\'s newer cursors'
   await stream.receiveEvent({ id: 11, type: 'run.progress', thread_id: 't', payload: { run_id: 'r', message_id: 'm', updates: [{ id: 'gone' }] } });
   assert.equal(calls.reconcile, 1);
   assert.deepEqual([S.viewCursor, S.threadWatermark, S.cursor], [20, 20, 11]);
+});
+
+test('a turn still being sent from this view takes its run events from its reply, not a read', async () => {
+  baseState({ messages: [{ id: 'u', role: 'user', content: 'Hi' }], cursor: 10, viewCursor: 10, sendingThread: 't' });
+  const calls = {};
+  const stream = makeStream(calls);
+  await stream.receiveEvent({ id: 11, type: 'thread.updated', thread_id: 't', payload: { id: 't', revision: 4 } });
+  await stream.receiveEvent({ id: 12, type: 'run.started', thread_id: 't', payload: { run_id: 'r', message_id: 'm' } });
+  assert.equal(calls.reconcile, undefined);
+  assert.equal(S.sendRaced, true, 'the send replays them once its reply lands');
+  assert.equal(S.cursor, 12);
+  S.sendingThread = '';
+  await stream.receiveEvent({ id: 13, type: 'run.started', thread_id: 't', payload: { run_id: 'r2', message_id: 'm2' } });
+  assert.equal(calls.reconcile, 1, 'with no send in flight the chat is read');
 });
 
 test('events resent by a gap replay fire only the open thread\'s run updates', async () => {

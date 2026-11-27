@@ -288,6 +288,8 @@ export function createSend(ctx) {
       // What this view holds, for a queued turn's reply to carry only the turn.
       const have = S.partialTranscript || request.id !== S.currentId ? "" :
         "&have=" + S.messages.length + "&base=" + S.serverRevision + "&after=" + encodeURIComponent(S.messages.at(-1)?.id || "");
+      S.sendingThread = request.id;
+      S.sendRaced = false;
       const data = await net.api("/chat/threads/" + request.id + (queued ? "/queue?pack=1" + have : "/turns?pack=1&tail=1"), { method: "POST", body: JSON.stringify(request.body) });
       if (queued && !data.sent) {
         // Held there (a Stop elsewhere) or another item went first.
@@ -324,6 +326,8 @@ export function createSend(ctx) {
       const thread = data.thread && withTranscript(net.unpackThread(data.thread));
       if (thread) sync.acceptThread(thread);
       else await sync.reconcileThread().catch(() => {});
+      // Run events that came before this reply come again from its cursor.
+      if (S.sendRaced) { S.sendRaced = false; sync.replayGap(); }
       sidebar.rememberUndo(request.undoSnap || undoSnap);
       // The acknowledgment is a consistent snapshot. If the socket already
       // applied later progress of this run, acceptThread keeps that reply.
@@ -360,6 +364,10 @@ export function createSend(ctx) {
       // `sending` is global, not per thread: a navigation away mid-send must
       // still release it or every send/open/new-chat control stays locked.
       S.sending = false;
+      S.sendingThread = "";
+      // A send that failed or was held after its run's events went by reads the chat.
+      if (S.sendRaced && gen === S.generation) sync.reconcileThread().catch(() => {});
+      S.sendRaced = false;
       if (gen === S.generation) { transcript.setActive(S.messages.length > 0); composer.resizeInput(); }
       sync.syncStatus();
     }
