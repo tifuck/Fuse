@@ -321,11 +321,10 @@ def _code_mode(helpers: str, single: str, uses: str) -> str:
     direct = "`run_terminal_command` call (say, `docker compose ps`)" if shell else "`grep` call (say, for `class Session`)"
     # Only an agent that changes things sends calls that need the earlier ones to have worked.
     ahead = (
-        "  - The next call only needs the one before to have worked (edit then test, test then commit, mkdir then "
-        "write): send them in one step, as direct calls (on a host they run in order and the first failure stops "
-        "the rest, which come back \"Not run\") or in a snippet with `sh` (it throws unless the command exits 0).\n"
-        "  - A call whose result you do not need to read before your next call (todo_write, scratch, an edit, a "
-        "write) never gets a step of its own: send it with the next call.\n"
+        "  - The next call only needs the one before to have worked (a todo_write, an edit, then its test, then the "
+        "commit): send them in one step, as direct calls (on a host they run in order and the first failure stops "
+        "the rest, which come back \"Not run\") or in a snippet with `sh` (it throws unless the command exits 0). "
+        "Never give a call whose result you do not need to read a step of its own.\n"
     ) if "write_file" in helpers else ""
     return (
         "Code mode (`run_code`): one snippet that makes several tool calls in a single step.\n"
