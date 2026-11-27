@@ -774,7 +774,7 @@ _FILE_TOOL_NAMES = ("read_file", "list_dir", "grep", "glob")
 
 
 def _loaded_line(names: list[str], read_only: bool = False, code: bool = False) -> str:
-    use = "Call them directly (the file and shell ones also inside `run_code`, see Code mode)" if code else "Call them directly"
+    use = "Call them directly or inside `run_code` (see Code mode)" if code else "Call them directly"
     no_search = "; they need no `search_tools` call." if code else " without `search_tools`."
     if names and read_only:
         # Explore/plan children can load nothing beyond their own allowlist.
