@@ -38,6 +38,8 @@ REPLY_LIMIT = 64 * 1024 * 1024
 # pairs, a value this long still fits one MESSAGE_LIMIT line.
 RESULT_CHARS = 300_000
 LOG_CHARS = 10_000
+# The output an sh failure carries: its tail, so its message and stack fit LOG_CHARS.
+SH_TAIL = 8_000
 # CPU seconds; time spent awaiting helpers costs none.
 CPU_SECONDS = 120
 _FIX = "Fix the code and call run_code again."
@@ -53,7 +55,7 @@ for (const name of ["setTimeout", "clearTimeout", "setInterval", "clearInterval"
 globalThis.require = (name) => {
   throw new Error(`require(${JSON.stringify(String(name))}) is not available: run_code is not Node.js. ` +
     "Read files with `const text = await read_file(\"src/app.py\")` (and list_dir, glob, grep, write_file, search_replace, " +
-    "run_terminal_command the same way). %FIX%");
+    "run_terminal_command, sh the same way). %FIX%");
 };
 const __logs = [];
 const console = {};
@@ -71,7 +73,27 @@ const __tool = (name, key) => async (args, content) => {
 // The rest of an earlier run's cut result (the parent keeps it a while).
 const read_result = (id, opts) => __tool("read_result", "")({...(opts || {}), id});
 """.replace("%FIX%", _FIX) + "".join(
-    f"const {name} = __tool({json.dumps(name)}, {json.dumps(_STRING_ARG.get(name, ''))});\n" for name in HELPERS)
+    f"const {name} = __tool({json.dumps(name)}, {json.dumps(_STRING_ARG.get(name, ''))});\n" for name in HELPERS) + r"""
+// sh(command, options?): a step that must succeed. On top of run_terminal_command,
+// so the parent sees (and gates) a plain run_terminal_command call. The error
+// is marked so the parent shows the output as it is (see TAIL).
+const sh = async (a, more) => {
+  const args = more === undefined ? a : Object.assign({}, typeof a === "string" ? {command: a} : a, more);
+  const r = await run_terminal_command(args);
+  if (r.exit_code === 0 && r.status !== "running") return r.output;
+  let line = String(typeof args === "string" ? args : args.command).split(/\s+/).join(" ").trim();
+  if (line.length > 80) line = line.slice(0, 80) + "…";
+  const what = r.status === "running"
+    ? `moved to the background as ${r.id} and has not finished; do not run it again (read it with get_command_output, outside run_code)`
+    : typeof r.exit_code === "number" ? `exited ${r.exit_code}` : `ended with status ${r.status} and no exit code`;
+  const out = r.output || "";
+  const cut = out.length > %SH_TAIL%;
+  const e = new Error(`sh ${line}: ${what}\n` + (!out ? "(no output)" : cut
+    ? `--- output, last %SH_TAIL% of ${out.length} characters ---\n` + out.slice(-%SH_TAIL%) : "--- output ---\n" + out));
+  e.__fuse_sh = true;
+  throw e;
+};
+""".replace("%SH_TAIL%", str(SH_TAIL))
 
 # `return` and `await` work at the code's top level. One script, so stack
 # lines up to OFFSET are the prelude's and the code's line n is OFFSET + n.
@@ -82,8 +104,11 @@ TAIL = """
              if (value === undefined && v !== undefined) throw new TypeError("a " + typeof v + " has no JSON form; return a string, number, array or object");
              return JSON.stringify({ok: true, undef: v === undefined, value, logs: __logs}); }
            catch (e) { return JSON.stringify({ok: false, error: "the return value is not JSON-serializable: " + e, logs: __logs}); } },
-  (e) => JSON.stringify({ok: false, error: String((e && e.stack) || e) ||
-    "the code threw " + JSON.stringify(e) + ", which has no message; throw an Error with one", logs: __logs}))
+  (e) => JSON.stringify(e && e.__fuse_sh
+    // An sh failure: the message (with the command's output) apart from the stack lines.
+    ? {ok: false, error: e.message, frames: String(e.stack).startsWith(String(e)) ? String(e.stack).slice(String(e).length) : "", logs: __logs}
+    : {ok: false, error: String((e && e.stack) || e) ||
+       "the code threw " + JSON.stringify(e) + ", which has no message; throw an Error with one", logs: __logs}))
 """
 OFFSET = (PRELUDE + HEAD).count("\n")
 
@@ -119,8 +144,9 @@ def _clip(outcome: dict) -> dict:
     if len(logs) > LOG_CHARS:
         logs = logs[:LOG_CHARS] + f"\n[console output cut; {len(logs)} characters total]"
     outcome["logs"] = logs
-    if isinstance(outcome.get("error"), str):
-        outcome["error"] = outcome["error"][:LOG_CHARS]
+    for key in ("error", "frames"):
+        if isinstance(outcome.get(key), str):
+            outcome[key] = outcome[key][:LOG_CHARS]
     return outcome
 
 
