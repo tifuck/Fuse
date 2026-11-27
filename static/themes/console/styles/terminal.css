@@ -18,6 +18,7 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] {
   & .term-grip:is(:hover, :focus-visible), & .term-dock.is-resizing .term-grip { outline: 0; background: linear-gradient(transparent 3px, var(--brass) 3px, var(--brass) 5px, transparent 5px); }
   & .term-head { flex: none; display: flex; align-items: center; gap: 2px; height: 32px; padding: 0 6px 0 2px; border-bottom: 1px solid var(--line); }
   & .term-tabs { display: flex; min-width: 0; overflow: auto hidden; scrollbar-width: none; }
+  & .term-tabs::-webkit-scrollbar { display: none; }
   & .term-tab { flex: 0 1 auto; min-width: 2.5rem; display: flex; align-items: center; height: 24px; margin-right: 2px; border: 1px solid transparent; border-radius: 4px; color: var(--mute); }
   & .term-tab:hover { background: var(--raise); }
   & .term-tab.is-active { border-color: var(--line); background: var(--raise); color: var(--mist); box-shadow: inset 0 -1px 0 var(--brass); }

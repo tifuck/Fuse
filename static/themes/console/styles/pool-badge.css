@@ -51,10 +51,10 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-now-plan { flex: 0 4 auto; min-width: 6ch; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mute); font: 0.72rem/1 var(--mono); }
   & .chat-pool-now .chat-pool-note { padding-inline: 0.5rem; }
   /* Its few limits have the width for longer, thicker bars than the list. */
-  & .chat-pool-menu .chat-pool-now > ul > .chat-pool-line { grid-template-columns: minmax(0, 1fr) 5.5rem 2.5rem 4rem; }
+  & .chat-pool-menu .chat-pool-now > ul > .chat-pool-line { grid-template-columns: minmax(6rem, 1fr) minmax(2rem, 5.5rem) 2.5rem 4rem; }
   & .chat-pool-now .chat-pool-bar { height: 6px; }
   & .chat-pool-menu .chat-pool-line {
-    grid-template-columns: minmax(0, 1fr) 3.5rem 2.5rem 5.25rem;
+    grid-template-columns: minmax(6rem, 1fr) minmax(2rem, 3.5rem) 2.5rem 5.25rem;
     column-gap: 0.55rem;
     min-height: 1.9rem;
     padding: 0 0.5rem;
@@ -88,7 +88,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   & .chat-pool-manage { flex: none; margin-left: auto; color: var(--brass); font: 0.72rem/1.4 var(--mono); text-decoration: none; }
   @media (hover: hover) { & .chat-pool-manage:hover { text-decoration: underline; text-underline-offset: 3px; } }
   & .chat-pool-manage:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 3px; }
-  & .chat-pool-menu.is-sheet .chat-pool-line { grid-template-columns: minmax(0, 1fr) 3.5rem 2.5rem 5.25rem; min-height: 2.5rem; padding: 0 0.6rem; }
+  & .chat-pool-menu.is-sheet .chat-pool-line { grid-template-columns: minmax(6rem, 1fr) minmax(2rem, 3.5rem) 2.5rem 5.25rem; min-height: 2.5rem; padding: 0 0.6rem; }
   /* The card's foot: Sharing (opens the sharing panel) and the Sources link. */
   & .chat-pool-share { display: inline-flex; align-items: center; gap: 0.4rem; height: 1.6rem; margin: 0 0 0 -0.4rem; padding: 0 0.4rem; border: 0; border-radius: 6px; background: none; color: var(--mute); font: 0.72rem/1 var(--mono); cursor: pointer; }
   & .chat-pool-share b { color: var(--mist); font-weight: 600; }

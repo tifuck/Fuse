@@ -220,6 +220,7 @@
     height: var(--vv-height, 100dvh);
     max-height: var(--vv-height, 100dvh);
     overflow: hidden;
+    overflow: clip;
     width: 100%;
   }
   :where(html.is-chat-root[data-chat-view="console"]) body.is-chat .stage { flex: 1; min-height: 0; height: auto; width: 100%; }

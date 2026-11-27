@@ -125,6 +125,7 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-con
   display: grid;
   grid-template-columns: var(--console-col) minmax(0, 1fr);
   column-gap: 0.45rem;
+  white-space: normal;
 }
 
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-console-turn-mark { justify-self: center; }

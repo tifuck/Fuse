@@ -104,6 +104,19 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] {
   --tool-row: calc(1.2rem * var(--chat-text-scale, 1));
 }
 
+/* The column stays full width for code, tables and tool rows; prose keeps a
+   readable measure. */
+html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6, .chat-md-alert) { max-inline-size: 80ch; }
+
+/* Touch: a folded call or work line opens from anywhere on it (its result
+   line too), an open one from its head; both reach into the gap around
+   them, so the rows keep their height. */
+@media (pointer: coarse) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step:is(.is-console-call, .is-console-group) > .chat-step-main > .chat-step-head > .chat-step-toggle::after { content: ""; position: absolute; inset: -0.25rem 0; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step:is(.is-console-call, .is-console-group) > .chat-step-main > .chat-step-head:has(> .chat-step-toggle[aria-expanded="true"]) { position: relative; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-step:is(.is-console-call, .is-console-group) > .chat-step-main > .chat-step-head > :not(.chat-step-toggle) { position: relative; }
+}
+
 html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-log {
   gap: 0.45rem;
   padding: 0.4rem 0 1rem;
