@@ -158,7 +158,7 @@ def test_a_user_stop_interrupts_the_queued_calls_instead_of_skipping_them(ssh_ho
 
 def failing_code(monkeypatch, calls=(), kind="code_error"):
     """run_code answered without a worker: it makes calls [(name, args)] through the runner, then fails."""
-    async def run(arguments, *, call, paused=None, owner=()):
+    async def run(arguments, *, call, paused=None, owner=(), **_):
         for name, args in calls:
             await call(name, args)
         return "Error: boom", {"name": "run_code", "status": "error", "kind": kind, "error": "boom"}

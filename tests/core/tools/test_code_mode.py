@@ -11,6 +11,7 @@ recording fake runner.
 import asyncio
 import collections
 import json
+import re
 
 import pytest
 
@@ -184,14 +185,14 @@ def test_code_without_a_description_does_not_run():
     assert runner.calls == []
 
 
-def test_only_the_workspace_helpers_reach_the_runner():
+def test_only_the_offered_helpers_reach_the_runner_and_a_background_command_is_one():
     runner = Runner()
 
     text, _ = run_code("await monitor({command: 'tail -f log'});", runner)
     assert "monitor is not defined" in text and "run_code provides only" in text
-    text, _ = run_code("await run_terminal_command({command: 'make', background: true});", runner)
-    assert "call run_terminal_command directly" in text
     assert runner.calls == []
+    run_code("await run_terminal_command({command: 'make', background: true});", runner)
+    assert runner.calls == [("run_terminal_command", {"command": "make", "background": True})]
 
 
 def test_a_helper_the_code_shadowed_gets_its_own_fix_not_the_await_hint():
@@ -370,9 +371,8 @@ def test_a_result_that_cannot_be_masked_stops_the_code_instead_of_timing_out(mon
 
 
 def test_a_run_waits_only_so_long_for_a_free_worker(monkeypatch):
-    monkeypatch.setattr(code_mode, "WORKERS", 0)
+    monkeypatch.setattr(code_mode, "KERNELS", 0)
     monkeypatch.setattr(code_mode, "SLOT_WAIT_S", 0.01)
-    monkeypatch.setattr(code_mode, "_slots", None)
 
     text, trace = run_code("return 1;", Runner())
     assert trace["kind"] == "busy" and "busy" in text
@@ -380,13 +380,13 @@ def test_a_run_waits_only_so_long_for_a_free_worker(monkeypatch):
 
 def test_a_zero_or_negative_timeout_means_the_default(monkeypatch):
     seen = []
-    real = code_mode._execute
+    real = code_mode._go
 
-    async def execute(code, timeout_s, *rest):
+    async def go(one, code, rec, timeout_s, *rest):
         seen.append(timeout_s)
-        return await real(code, timeout_s, *rest)
+        return await real(one, code, rec, timeout_s, *rest)
 
-    monkeypatch.setattr(code_mode, "_execute", execute)
+    monkeypatch.setattr(code_mode, "_go", go)
     for timeout in (0, -5):
         run_code("return 1;", Runner(), timeout=timeout)
     assert seen == [code_mode.DEFAULT_TIMEOUT_MS / 1000] * 2
@@ -578,19 +578,22 @@ def test_a_cut_run_code_result_says_the_calls_already_ran():
     assert "of 30000 characters" in result["content"] and "do not run its edits or commands again" in result["content"]
 
 
-def test_a_cut_result_is_kept_for_its_chat_and_a_later_run_reads_the_rest(ssh_host):
+def test_a_cut_value_is_kept_whole_for_its_chat_and_a_later_run_reads_the_rest(ssh_host):
     text, jobs, _ = one_round(ssh_host, 'return Array.from({length: 4000}, (_, i) => `row ${i}`).join("\\n");')
-    head = jobs[0]
-    assert head.result_id and f'read_result("{head.result_id}"' in text and len(text) <= tool_jobs.TOOL_RESULT_CHARS
+    whole = "\n".join(f"row {i}" for i in range(4000))
+    ident = re.search(r'read_result\("(r_[0-9a-f]+)"\)', text).group(1)
+    # Cut head and tail where marked, within the limit, the rest named by its id.
+    assert "characters cut" in text and len(text) <= tool_jobs.TOOL_RESULT_CHARS
+    assert text.startswith(whole[:1000]) and whole[-1000:] in text
 
-    owner = code_mode._kept[head.result_id][1]
+    owner = code_mode._kept[ident][1]
     assert owner[0] == ssh_host.uid
-    rest, _ = run_code(f'return await read_result("{head.result_id}", {{offset: 30000, limit: 9}});', Runner(), owner=owner)
-    assert rest.startswith(head.text[30000:30009])
+    rest, _ = run_code(f'return await read_result("{ident}", {{offset: 30000, limit: 9}});', Runner(), owner=owner)
+    assert rest.startswith(whole[30000:30009])
 
-    other, _ = run_code(f'try {{ return await read_result("{head.result_id}"); }} catch (e) {{ return e.message; }}',
+    other, _ = run_code(f'try {{ return await read_result("{ident}"); }} catch (e) {{ return e.message; }}',
                         Runner(), owner=(ssh_host.uid, -1))
-    assert other.startswith(f"no kept result {head.result_id}")
+    assert other.startswith(f"no kept result {ident}")
 
 
 def test_kept_results_expire_and_the_oldest_go_first_past_the_cap(monkeypatch):

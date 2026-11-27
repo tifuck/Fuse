@@ -20,7 +20,7 @@ import re
 
 import pytest
 
-from app import agent_catalog, code_mode
+from app import code_mode
 from app.chat_generation import tool_jobs
 from app.chat_generation.tool_jobs import TOOL_RESULT_CHARS, ToolJob
 from app.code_worker import HELPERS
@@ -113,9 +113,10 @@ throw new Error("E".repeat(20000));""", Runner(answer))
 
 def test_a_cut_run_pages_back_exactly_from_the_offset_the_note_names(ssh_host, kept):
     ssh_host.fs.write(f"{ssh_host.root}/a.txt", "alpha\n")
+    # The value is cut to fit on its own; a long console output then takes the whole past the limit.
     text, jobs, _ = one_round(ssh_host, """
 const a = await read_file("a.txt");
-console.log("logged " + a.trim());
+console.log("logged " + a.trim() + " " + "z".repeat(9000));
 return Array.from({length: 4000}, (_, i) => `row ${i} ${a.trim()}`).join("\\n");""")
     head = jobs[0]
     assert len(text) <= TOOL_RESULT_CHARS and text.endswith("\n[Fuse: 1 call: read_file×1]")
@@ -167,7 +168,8 @@ return rest;""", Runner(), owner=owner)
 
 def test_outcomes_without_a_value_still_close_with_the_calls_line():
     for code, want in (("await read_file('a');\nconsole.log('a', {b: 1});\nreturn;", "[console]\na {\"b\":1}\n[Fuse: 1 call: read_file×1]"),
-                       ("await read_file('a');", "(no return value: end the code with `return …`)\n[Fuse: 1 call: read_file×1]"),
+                       ("const a = await read_file('a');", "(no value: end the code with an expression or `return …`)\n[Fuse: 1 call: read_file×1]"),
+                       ("await read_file('a');", "ok\n[Fuse: 1 call: read_file×1]"),
                        ("return '';", "\n[Fuse: no tool calls]")):
         text, trace = run_code(code, Runner())
         assert (text, trace["status"]) == (want, "done")
@@ -262,7 +264,7 @@ def test_every_parameter_run_code_declares_is_one_the_real_tool_takes():
     assert set(declared) == set(HELPERS) | {"sh"}
     declared["sh"]["command"] = ("string", False)
     for name, params in declared.items():
-        real = agent_catalog.schema("run_terminal_command" if name == "sh" else name)["function"]["parameters"]
+        real = code_mode._schema("run_terminal_command" if name == "sh" else name)["function"]["parameters"]
         assert set(params) <= set(real["properties"]), name
         assert set(real.get("required") or []) <= {k for k, (_, optional) in params.items() if not optional}, name
 
@@ -300,7 +302,8 @@ def test_every_documented_call_form_reaches_the_tool():
 
     text, trace = run_code(code, runner)
 
-    assert trace["status"] == "done" and text.startswith("all ran"), text
+    # The web helpers' text marks the value as untrusted, before it.
+    assert trace["status"] == "done" and "\nall ran\n" in f"\n{text}", text
     assert runner.calls == full + [want for _, want in forms]
 
 
@@ -314,10 +317,9 @@ def test_every_refused_helper_call_names_the_helper_and_the_fix():
         "list_dir(42)": "list_dir takes one argument object, e.g. list_dir({path:",
         "read_file(['a', 'b'])": "read_file takes one argument object",
         "glob({pattern: '*', host: 'box', sort: 'name', depth: 1})": "glob has no argument depth",
-        "run_terminal_command({command: 'make', background: true})": "call run_terminal_command directly",
         "sh({command: 'make', shell: 'bash'})": "run_terminal_command has no argument shell; it takes command",
         "sh('make', {dir: 'web'})": "run_terminal_command has no argument dir; it takes command",
-        "__call('monitor', '{}')": "monitor is not available in run_code (available: read_file",
+        "__h.__call('monitor', '{}')": "monitor is not available in run_code (available: read_file",
     }
     code = "const out = [];\n" + "".join(
         f"try {{ const r = await {js}; out.push(typeof r === 'string' && r.startsWith('{{') ? JSON.parse(r).error : 'ran'); }} "
@@ -356,7 +358,7 @@ def test_malformed_messages_from_the_code_are_refused_not_fatal():
 const out = [];
 for (const [name, raw] of [["read_file", "{"], ["read_file", "null"], ["read_file", "\\"a\\""], ["nope", "{}"],
                            ["read_result", "[1]"], ["read_result", "{\\"id\\": {}}"]]) {
-  out.push(JSON.parse(await __call(name, raw)).ok);
+  out.push(JSON.parse(await __h.__call(name, raw)).ok);
 }
 return out;""", runner)
     assert trace["status"] == "done", text
@@ -364,7 +366,7 @@ return out;""", runner)
 
 
 def test_read_result_with_an_infinite_offset_is_refused_by_name():
-    text, _ = run_code('return await __call("read_result", \'{"id": "r_x", "offset": 1e999}\');', Runner())
+    text, _ = run_code('return await __h.__call("read_result", \'{"id": "r_x", "offset": 1e999}\');', Runner())
     assert "read_result" in text
 
 

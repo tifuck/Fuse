@@ -12,11 +12,13 @@ import asyncio
 import base64
 import binascii
 import contextlib
+import itertools
 import json
 import logging
 import re
 import time
 import traceback
+from types import SimpleNamespace
 
 from fastapi import Request
 
@@ -123,6 +125,15 @@ def _gate_failure(job: ToolJob, jobs: list[ToolJob] = ()) -> str:
     the round's) started: a read-only snippet that threw, or a run that never
     ran, changed nothing."""
     status, code = job.trace.get("status"), job.trace.get("exit_code")
+    if job.name == "run_code" and job.trace.get("background"):
+        from ..workspace_ops.common import _as_bool
+
+        try:
+            asked = _as_bool(json.loads(job.arguments or "{}").get("background"))
+        except (ValueError, AttributeError, RecursionError):
+            asked = False
+        # Moved there at its deadline, it may still change any host; started there, it was meant to run alongside.
+        return "" if asked else "moved to the background and has not finished"
     if job.name == "run_code" and not any(
             j.parent == job.event_id and j.name in _HOST_MUTATING_TOOLS and j.started for j in jobs):
         return ""
@@ -413,9 +424,14 @@ async def run_tools(
 
             run_coding = bool(session.get("coding")) if session else coding
             if job.name == "run_code" and not job.parent and run_coding:
+                # The chat's REPL; a subagent shares its parent's thread, so it gets one of its own.
+                scope = str(session.get("run_id") or "") if (session.get("requester") or {}).get("role") == "subagent" else ""
+                bound = session.get("bound_host_id") if session else bound_host_id
                 text, trace = await code_mode.run(
                     arguments, call=lambda name, args: run_child(job, name, args), paused=lambda: bool(asking),
-                    owner=(user_id, thread_id),
+                    owner=(user_id, thread_id), kernel=(user_id, thread_id, scope) if thread_id else None,
+                    background=code_background(job, run_coding) if thread_id else None,
+                    shells=await asyncio.to_thread(code_mode.shells, user_id, bound),
                 )
             else:
                 text, trace = await execute_tool(
@@ -621,6 +637,78 @@ async def run_tools(
         text, child.text = child.text, ""
         child.arguments = json.dumps({k: args[k] for k in ("path", "pattern", "command") if k in args}, ensure_ascii=False)
         return text, child.trace
+
+    def code_background(job: ToolJob, run_coding: bool) -> code_mode.Background:
+        """How a run_code of this round moves to the background: the calls it
+        makes there run here, without rows and with an unattended gate (a call
+        that would ask is refused), and a command job carries its result."""
+        gate = permissions_mod.Gate(
+            user_id=user_id,
+            thread_id=thread_id,
+            run_id=str(session.get("run_id") or ""),
+            requester=session.get("requester") or {"role": "main"},
+            unattended=True,
+            notify=lambda obj: None,
+            cancel=None,
+        )
+        made = itertools.count(1)
+
+        async def call(name: str, args: dict) -> tuple[str, dict]:
+            child = ToolJob(orig_index=job.orig_index, call_id=job.call_id, name=name,
+                            arguments=json.dumps(args, ensure_ascii=False), event_id=f"{job.event_id}_b{next(made)}",
+                            parent=job.event_id)
+            started = time.monotonic()
+            try:
+                text, trace = await execute_tool(
+                    name,
+                    child.arguments,
+                    user_id=user_id,
+                    allowed_urls=allowed_urls,
+                    budgets=budgets,
+                    thread_id=thread_id,
+                    bound_host_id=session.get("bound_host_id") if session else bound_host_id,
+                    bound_cwd=(session.get("bound_cwd") if session else bound_cwd) or "",
+                    coding=run_coding,
+                    loaded=loaded,
+                    parent_run_id=parent_run_id,
+                    user=user,
+                    session=session,
+                    enabled=session.get("enabled_tools") if session else None,
+                    gate=gate,
+                    **({"raw": True} if name == "read_file" else {}),
+                )
+            except Exception:
+                logger.exception("Background run_code call %s failed", name)
+                text, trace = "Tool failed.", {"name": name, "status": "error", "kind": "internal_exception",
+                                               "error": "Tool failed."}
+            trace = dict(trace)
+            # Nothing shows a picture once the turn has gone on.
+            trace.pop("image", None)
+            if trace.get("status") in ("error", "interrupted"):
+                child.trace = trace
+                await _record_failure(job=child, trace=trace, diag=diag, user_id=user_id, thread_id=thread_id,
+                                      phase="code", latency_ms=int((time.monotonic() - started) * 1000))
+            return text, trace
+
+        async def launch(description: str, finish) -> str:
+            from .. import command_jobs, secret_guard
+
+            async def runner(sink):
+                text, ok = await finish()
+                # The code held stand-ins; the stored result reads real values, as a run_code row does.
+                held = await asyncio.to_thread(secret_guard.map_for, user_id)
+                return SimpleNamespace(exit_status=0 if ok else 1, output=secret_guard.restore_text(held, text))
+
+            rec = await command_jobs.launch_async(
+                user_id=user_id, host_id=0, host="", thread_id=thread_id, run_id=str(session.get("run_id") or "") or None,
+                command=f"run_code: {description}", cwd="", background=True,
+                timeout_ms=command_jobs.BACKGROUND_DEFAULT_MS, runner=runner, kind="code", description=description,
+            )
+            return str(rec["id"])
+
+        from .. import command_jobs
+
+        return code_mode.Background(call=call, launch=launch, limit_ms=command_jobs.BACKGROUND_DEFAULT_MS)
 
     def _job_phase(name: str) -> str:
         if name == "web_search":

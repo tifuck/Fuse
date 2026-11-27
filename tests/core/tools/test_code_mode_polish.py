@@ -117,7 +117,7 @@ def test_code_that_throws_about_a_memory_limit_is_a_code_error_with_its_own_text
 
 def test_a_worker_the_run_killed_itself_is_not_blamed_on_the_cpu_limit():
     # A call name too long for the pipe: the parent stops reading and kills the worker.
-    text, trace = run_code('await __call("x".repeat(5000000), "{}");', Runner())
+    text, trace = run_code('await __h.__call("x".repeat(5000000), "{}");', Runner())
     assert trace["kind"] == "worker" and "CPU" not in text
 
 
@@ -164,12 +164,12 @@ def test_refusals_name_only_what_code_takes_and_background_false_runs():
     text, _ = run_code("""
 const out = [];
 try { await run_terminal_command({command: "make", dir: "web"}); } catch (e) { out.push(e.message); }
-out.push(JSON.parse(await __call("monitor", "{}")).error);
+out.push(JSON.parse(await __h.__call("monitor", "{}")).error);
 out.push((await run_terminal_command({command: "make", background: "false"})).status);
 return out;""", runner)
 
     bad, missing, status = json.loads(value_of(text))
-    assert bad.startswith("run_terminal_command has no argument dir; it takes command") and "background" not in bad
+    assert bad.startswith("run_terminal_command has no argument dir; it takes command")
     assert "read_result" in missing and status == "completed"
     assert runner.calls == [("run_terminal_command", {"command": "make", "background": "false"})]
 
@@ -180,11 +180,11 @@ def test_a_command_sh_left_in_the_background_says_its_result_comes_later():
     assert "its result arrives later as a command result" in text and "get_command_output" not in text
 
 
-def test_the_description_states_how_long_results_are_kept_and_when_sh_needs_or_true():
+def test_the_description_states_how_long_results_are_kept_and_which_exit_1_is_no_failure():
     desc = code_mode.SCHEMA["function"]["description"]
     sh_line = next(line for line in desc.splitlines() if line.startswith("declare function sh("))
     assert f"kept {code_mode.KEEP_S // 60} minutes" in desc
-    assert "a command whose non-zero exit is no failure (grep, diff) needs `|| true`" in sh_line
+    assert "exit 1 from grep, rg, find, diff or test is no failure" in sh_line
 
 
 def test_once_its_sandbox_failed_run_code_is_not_offered_and_a_call_says_so(monkeypatch):

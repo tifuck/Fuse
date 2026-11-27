@@ -140,11 +140,25 @@ which adds `/sources/p/<id>/…`). Tests: sign-in, refresh and routing in
 
 ## run_code (code mode)
 
-Coding agents get `run_code`: JavaScript whose workspace calls are real tool
-calls. `app/code_mode.py` starts one `app/code_worker.py` process per run (a
-`mini-racer` V8 isolate, jitless, empty environment, CPU/data/file/fd limits,
-no new processes, no_new_privs, killed at its deadline); each helper call
-comes back over the pipe and `tool_runner.run_tools` runs it as a child
+Coding agents get `run_code`: JavaScript whose tool calls are real tool
+calls, in a REPL. `app/code_mode.py` keeps one kernel per chat (per agent: a
+subagent shares its parent's thread, so its run id is part of the key): an
+`app/code_worker.py` process (a `mini-racer` V8 isolate, jitless, empty
+environment, CPU/data/file/fd limits, no new processes, no_new_privs, no
+network, uid 65534) whose context outlives its runs. Each run's code is
+parsed with the vendored acorn (`app/vendor/acorn.js`) and rewritten in
+place (`__fuse_transform`): top-level `const`/`let`/`var`, functions and
+classes become globals of the context, so the chat's next run sees them, and
+a last expression statement is the run's value (`return` still works);
+promises inside a returned object are awaited. Code acorn cannot parse goes to
+V8 as written (its syntax error, or a run without those forms). At most
+`KERNELS` (8) live on the server: a new chat evicts the longest idle one or
+waits `SLOT_WAIT_S` (else `busy`); one idle for `IDLE_S` ends; a run that will
+not stop (an endless loop past its deadline or a stop) ends with its kernel.
+Whenever a chat's kernel ended, its next run starts with a `[Fuse: this
+chat's REPL restarted (…)]` line. A run without a chat (`kernel=None`) gets a
+kernel of its own. Each helper call comes back over the pipe and
+`tool_runner.run_tools` runs it as a child
 `ToolJob` of the same round (`parent` set, same `call_id`), so the permission
 gate, confinement and rows apply as to a direct call (the step gate below
 does not: inside a snippet changes are gated by `code_mode` itself). Only the
@@ -152,12 +166,31 @@ parent's text reaches the model (`tool_jobs._call_result`); child traces carry
 `parent` and sit under their run_code row (the running row carries the code);
 a run's reads past the first 40 draw no row, and the failure log records the
 calls a snippet made with phase `code`. The deadline stops while a permission
-prompt waits. A helper takes its argument object, or a string (the path,
-pattern or command) and an optional options object, merged as `sh` merges
-them. The value comes back as text: a string as it is; a plain object holding
+prompt waits. The helpers are the file and shell tools, `web_search`,
+`read_url` (the value then opens with an untrusted-web line),
+`spawn_subagent` and `get_subagent_output`, each taking its argument object or
+a string (the path, pattern, command, query, url, prompt or id) and an
+optional options object, merged as `sh` merges them; and on top of them `$`
+(a tagged template that quotes each `${}` value for the host's shell, bash or
+PowerShell from `code_mode.shells`), `sh`, `edit`, `write`, `file`,
+`preview`, `sleep` and `log`. `$` and `sh` treat exit 1 from grep, rg, find,
+diff or test as no match, not a failure. A background command
+(`background: true`) is allowed and answers `running` with its id. The value
+comes back as text: a string as it is; a plain object holding
 multi-line text as `key: <JSON>` lines and a `--- key ---` block per such
 text; anything else as JSON (Error, Map, Set and BigInt get a readable form,
-in `console.log` too). Inside a snippet, changes on one host run in order,
+in `console.log` too). A value over `VALUE_CHARS` is cut head and tail where
+marked, each text of an object getting a fair share, and the whole is kept for
+`read_result`. A run still going at its deadline, or started with
+`background: true`, moves to the background (`code_mode._detach`): the calls
+already made finish in the round, the later ones run through
+`tool_runner.code_background` without rows and with an unattended permission
+gate (a call that would ask is refused; subagent calls are refused), and a
+command job of kind `code` carries the result (cut to `BACKGROUND_CHARS`, the
+whole kept for `read_result`), delivered like a background command's;
+`get_command_output` and `kill_command` take its id. A run moved there at its
+deadline holds back the step's later host changes, as a command moved to the
+background does. Inside a snippet, changes on one host run in order,
 and one the code sent while an earlier one still had no reply does not run
 when that earlier one failed (`Not run: …`, as for direct calls in a step); a
 call sent after the code saw the earlier result always runs. A result over 24,000

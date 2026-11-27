@@ -30,7 +30,7 @@ async def done(name, arguments, **kw):
 def scripted(monkeypatch, calls=(), text="ok\n[Fuse: 1 call: write_file×1]", **trace):
     """run_code makes calls [(name, args)] through the runner, then returns text with a trace of status done
     updated by trace."""
-    async def run(arguments, *, call, paused=None, owner=()):
+    async def run(arguments, *, call, paused=None, owner=(), **_):
         for name, args in calls:
             await call(name, args)
         return text, {"name": "run_code", "status": "done", "output": text, "code": json.loads(arguments)["code"], **trace}

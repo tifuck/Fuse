@@ -35,7 +35,8 @@ function consoleVerb(name, trace) {
     if (name === "create_artifact" || name === "update_artifact" || name === "edit_artifact" || name === "read_artifact") return "Artifact";
     if (name === "search_tools") return "Tools";
     if (name === "read_transcript") return "Transcript";
-    return "Tool";
+    // A name no view knows (a tool that does not exist) shows as it was called, when it is a plain identifier.
+    return /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(String(name || "")) ? String(name) : "Tool";
   }
 
 function toolStateHtml(running, failed, interrupted, statusLabel) {
