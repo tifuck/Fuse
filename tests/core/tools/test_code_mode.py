@@ -427,6 +427,17 @@ def test_a_run_cut_off_mid_way_tells_the_model_which_changes_happened():
     assert "b.txt" not in result["content"]
 
 
+def test_a_run_cut_off_mid_way_shows_the_exit_code_of_each_finished_command():
+    head = ToolJob(0, "call-1", "run_code", json.dumps({"code": "..."}), "ts_0_0")
+    tested = ToolJob(0, "call-1", "run_terminal_command", json.dumps({"command": "npm test"}), "ts_0_0_c1", parent="ts_0_0",
+                     done=True, trace={"status": "done", "exit_code": 1})
+    running = ToolJob(0, "call-1", "run_terminal_command", json.dumps({"command": "make deploy"}), "ts_0_0_c2", parent="ts_0_0")
+
+    _, result = tool_jobs._tool_messages([head, tested, running])
+
+    assert result["content"].endswith("- run_terminal_command make deploy: outcome unknown\n- run_terminal_command npm test: done, exit 1")
+
+
 def test_the_run_code_tip_counts_file_calls_made_one_per_step_and_never_after_a_run_code_that_worked():
     def jobs(*names, status="done"):
         return [ToolJob(0, f"c{i}", name, "{}", f"ts_{i}", trace={"status": status}) for i, name in enumerate(names)]
@@ -471,6 +482,66 @@ def test_the_wrap_tip_follows_run_code_calls_in_a_row_that_only_passed_one_call_
     # A run of several calls, or one that works on its single result, ends the row.
     assert tool_jobs.wrap_tip(run(9, 2), (2, 0))[0] == (0, 0)
     assert tool_jobs.wrap_tip(run(10, 1, code="a\nb\nc\nd"), (2, 0))[0] == (0, 0)
+
+
+def test_a_wrapped_sh_gets_the_wrap_tip_without_the_exit_code_claim_and_a_failed_one_leaves_the_row():
+    def run(status="done", kind=""):
+        head = ToolJob(0, "c0", "run_code", "{}", "ts_0", trace={"status": status, "kind": kind, "code": "return await sh('make check');"})
+        return [head, ToolJob(0, "c0", "run_terminal_command", "{}", "ts_0_c0", parent="ts_0", trace={"status": "done", "exit_code": 0})]
+
+    state, tip = tool_jobs.wrap_tip(run())
+    assert state == (1, 1) and "wrapped one run_terminal_command call" in tip and "exit code" not in tip
+    assert tool_jobs.wrap_tip(run("error", "command_failed"), state) == (state, "")
+
+
+def test_a_call_the_step_gate_held_back_counts_for_no_tip():
+    failed = ToolJob(0, "c0", "write_file", "{}", "ts_0", trace={"status": "error"})
+    held = ToolJob(1, "c1", "search_replace", "{}", "ts_1", trace={"status": "error", "kind": "not_run"})
+    assert tool_jobs.code_tip_count([failed, held], collections.Counter()) == collections.Counter()
+    assert tool_jobs.ack_tip([failed, held], (collections.Counter(search_replace=1), 0)) == ((collections.Counter(search_replace=1), 0), "")
+    # A run whose one call was held back wrapped nothing.
+    head = ToolJob(2, "c2", "run_code", "{}", "ts_2", trace={"status": "done", "code": "return await sh('ls');"})
+    child = ToolJob(2, "c2", "run_terminal_command", "{}", "ts_2_c0", parent="ts_2", trace={"status": "error", "kind": "not_run"})
+    assert tool_jobs.wrap_tip([head, child], (1, 1)) == ((1, 1), "")
+
+
+def ack_step(i, name, status="done", **trace):
+    return [ToolJob(0, f"c{i}", name, "{}", f"ts_{i}", trace={"status": status, **trace})]
+
+
+def test_the_ack_tip_comes_from_the_second_lone_step_whose_result_the_next_call_did_not_need():
+    state, tip = tool_jobs.ack_tip(ack_step(0, "todo_write"))
+    assert not tip
+    # Not counted: a failed edit, a command that printed a lot or exited 1, a run_code, two calls in one step.
+    for step in (ack_step(1, "search_replace", "error"),
+                 ack_step(2, "run_terminal_command", exit_code=0, output_chars=500),
+                 ack_step(3, "run_terminal_command", exit_code=1, output_chars=10),
+                 ack_step(4, "run_code"), ack_step(5, "write_file") + ack_step(6, "read_file")):
+        assert tool_jobs.ack_tip(step, state) == (state, "")
+    state, tip = tool_jobs.ack_tip(ack_step(7, "run_terminal_command", exit_code=0, output_chars=12), state)
+    assert tip.startswith("[Fuse] 2 of your steps this turn were one call whose result you did not need")
+    assert "(1 todo_write, 1 run_terminal_command)" in tip and "Send such a call in the same step as the call that follows it" in tip
+    for i in range(8, 7 + tool_jobs.ACK_TIPS):
+        state, tip = tool_jobs.ack_tip(ack_step(i, "search_replace"), state)
+        assert tip
+    state, tip = tool_jobs.ack_tip(ack_step(99, "search_replace"), state)
+    assert state[1] == tool_jobs.ACK_TIPS and not tip
+
+
+def test_a_step_gets_one_tip_and_a_run_code_tip_that_loses_waits_for_a_later_step():
+    def results():
+        return [{"role": "assistant"}, {"role": "tool", "content": "ok"}]
+
+    states = ((0, 0), (collections.Counter(), 0), collections.Counter())
+    shown = []
+    for i, name in enumerate(("search_replace", "search_replace", "write_file", "read_file")):
+        msgs = results()
+        states = tool_jobs.add_step_tip(msgs, ack_step(i, name), *states)
+        shown.append(msgs[1]["content"])
+    # Steps 2 and 3 get the ack tip (the run_code tip is due at step 3 and waits); step 4 gets the run_code tip.
+    assert shown[0] == "ok" and all(text.count("[Fuse]") == 1 for text in shown[1:])
+    assert "were one call" in shown[1] and "were one call" in shown[2]
+    assert "4 file calls one per step" in shown[3] and states[2] is None
 
 
 def test_recovered_history_replays_run_code_but_not_the_calls_it_made():
