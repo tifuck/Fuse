@@ -29,6 +29,9 @@ from .workspace_ops.instructions import unlabel_host
 
 logger = logging.getLogger(__name__)
 
+# What the code can call, as hints name it: the tools plus sh (code_worker PRELUDE).
+PROVIDED = (*HELPERS, "sh")
+
 WORKER = Path(__file__).with_name("code_worker.py")
 HEAP_MB = 64
 # A server that is not root has no uid to drop the worker to, so the worker
@@ -120,11 +123,12 @@ SCHEMA = {
             "declare function read_file(a: {path: string, offset?: number, limit?: number, host?: string} | string): "
             "Promise<string>; // raw text, no line numbers; the whole file (up to 2 MB) unless limit is given\n"
             "declare function grep(a: {pattern: string, path?: string, include?: string, output_mode?: \"content\" | "
-            "\"files_with_matches\" | \"count\", case_insensitive?: boolean, max_matches?: number, host?: string} | "
-            "string): Promise<string>; // path:line:text lines; path is one file or directory (for several, use "
+            "\"files_with_matches\" | \"count\", case_insensitive?: boolean, context?: number, no_ignore?: boolean, "
+            "max_matches?: number, host?: string} | string): Promise<string>; // path:line:text lines (context lines "
+            "path-line-text, groups split by --); path is one file or directory (for several, use "
             "include with braces, e.g. \"*.{py,js}\", or one call each)\n"
-            "declare function glob(a: {pattern: string, path?: string, host?: string} | string): Promise<string>; "
-            "// one path per line\n"
+            "declare function glob(a: {pattern: string, path?: string, no_ignore?: boolean, sort?: \"path\" | "
+            "\"modified\", host?: string} | string): Promise<string>; // one path per line\n"
             "declare function list_dir(a?: {path?: string, depth?: number, host?: string} | string): Promise<string>; "
             "// one entry per line, directories end with /\n"
             "declare function write_file(a: {path: string, content: string, host?: string} | string, content?: "
@@ -136,6 +140,10 @@ SCHEMA = {
             "description?: string, host?: string, env?: string[]} | string): Promise<{status: string, exit_code: number | null, "
             "output: string, id?: string}>; // a non-zero exit does not throw; status \"running\" means it moved "
             "to the background and its result arrives later\n"
+            "declare function sh(command: string, a?: {cwd?: string, timeout?: number, description?: string, "
+            "host?: string, env?: string[]}): Promise<string>; // the output text; throws (exit code, output) unless "
+            "the command exits 0, and the code stops there: for steps that must succeed before the next (edit, "
+            "test, commit)\n"
             "declare function read_result(id: string, a?: {offset?: number, limit?: number}): Promise<string>; "
             "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes): the text "
             "that run returned, not its variables, so take only the part you need\n"
@@ -150,9 +158,8 @@ SCHEMA = {
             ".split(\"\\n\").filter((p) => p && !p.startsWith(\"(\"));\n"
             "for (const path of files) await search_replace({path, old_string: \"fetchUser(\", new_string: "
             "\"loadUser(\", replace_all: true});\n"
-            "const t = await run_terminal_command({command: \"npm test 2>&1 | tail -n 20\", description: \"Run the "
-            "tests\"});\n"
-            "return {edited: files, exit: t.exit_code, tail: t.output};"
+            "const out = await sh(\"npm test 2>&1\", {description: \"Run the tests\"});\n"
+            "return {edited: files, tests: out.slice(-1500)};"
         ),
         "parameters": {
             "type": "object",
@@ -288,16 +295,21 @@ def _edit_miss(args: dict, message: str) -> str:
     return f"{first} ({'; '.join(hints)})" + (f"\n{rest}" if rest else "")
 
 
-def _user_lines(stack: str) -> str:
+def _positions(stack: str) -> str:
     """V8 positions as the model's own line numbers; frames in the prelude
-    (a helper throwing) are dropped, and a Node habit gets its fix."""
+    (a helper throwing) are dropped."""
     out = []
     for line in str(stack).splitlines():
         m = re.search(r"<anonymous>:(\d+)", line)
         if m and int(m.group(1)) <= OFFSET:
             continue
         out.append(re.sub(r"<anonymous>:(\d+)", lambda m: f"line {int(m.group(1)) - OFFSET}", line))
-    text = "\n".join(out)
+    return "\n".join(out)
+
+
+def _user_lines(stack: str) -> str:
+    """The stack in the model's own line numbers, and a Node habit gets its fix."""
+    text = _positions(stack)
     fix = " Fix the code and call run_code again."
     # A helper the code shadowed (`const { grep } = globalThis`) is undefined, not un-awaited.
     shadowed = re.search(r"\b(\w+) is not a function", text)
@@ -307,17 +319,17 @@ def _user_lines(stack: str) -> str:
         text += (f"\n(If `${{{name}}}` sits in a backtick string meant for the shell or for file text, JavaScript "
                  f"filled it in: use a '…' or \"…\" string there, or write \\${{{name}}}.{fix})")
     elif undefined:
-        text += f"\n(run_code provides only: {', '.join(HELPERS)}, e.g. `await read_file(\"a.py\")`.{fix})"
+        text += f"\n(run_code provides only: {', '.join(PROVIDED)}, e.g. `await read_file(\"a.py\")`.{fix})"
     elif text.startswith("Not supported") or "Error: Not supported" in text:
-        text += f"\n(import() is not available: run_code is not Node.js. Use {', '.join(HELPERS)}.{fix})"
-    elif shadowed and shadowed.group(1) in HELPERS:
+        text += f"\n(import() is not available: run_code is not Node.js. Use {', '.join(PROVIDED)}.{fix})"
+    elif shadowed and shadowed.group(1) in PROVIDED:
         name = shadowed.group(1)
         text += (f"\n({name} is already defined in run_code: call it as `await {name}({{...}})` and do not declare, "
                  f"destructure or import it.{fix})")
     elif re.search(r"\.(split|trim|includes|match|replace|slice|startsWith|endsWith|map|filter|forEach|sort|join|"
                    r"length) is not a function|Cannot read properties of undefined \(reading '(split|trim|length)'\)", text):
         text += ("\n(Helpers return text, except run_terminal_command, which returns {status, exit_code, output}: use "
-                 "its .output. Split glob, grep and list_dir text into lines with .split(\"\\n\") before array methods, "
+                 "its .output (sh returns the text). Split glob, grep and list_dir text into lines with .split(\"\\n\") before array methods, "
                  f"and await every call.{fix})")
     elif "is not a function" in text or "[object Promise]" in text:
         text += f"\n(Each helper is async: write `await read_file(...)`, and `await Promise.all(...)` over a map.{fix})"
@@ -400,7 +412,10 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             crashed.append(exc)
             abort.set()
             text, trace = "Tool failed.", {"status": "error"}
-        done.append({"name": name, "subject": subject(call_args), "status": str(trace.get("status") or "")})
+        entry = {"name": name, "subject": subject(call_args), "status": str(trace.get("status") or "")}
+        if name == "run_terminal_command" and isinstance(trace.get("exit_code"), int):
+            entry["exit_code"] = trace["exit_code"]
+        done.append(entry)
         received += len(text or "")
         if trace.get("status") in ("error", "interrupted"):
             body = {"ok": False, "error": _call_error(name, call_args, _unlabel(text, trace))}
@@ -451,7 +466,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                 send({"reply": n, "body": json.dumps(page)})
                 continue
             if name not in HELPERS:
-                refuse(n, f"{name} is not available in run_code (available: {', '.join(HELPERS)}).")
+                refuse(n, f"{name} is not available in run_code (available: {', '.join(PROVIDED)}).")
                 continue
             if len(raw) > ARG_CHARS:
                 refuse(n, f"{name}'s arguments are over {ARG_CHARS} characters; split the work (for example, "
@@ -567,13 +582,23 @@ def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], st
             text = "[console]\n" + logs if logs else "(no return value: end the code with `return …`)"
         text += "\n" + _calls_line(done, stopped)
         return text, {**rec, "status": "done", "output": text, "code": code}
-    error = _user_lines(str(outcome.get("error") or "run_code failed.")).removeprefix("Error: ")
+    error = str(outcome.get("error") or "run_code failed.")
+    if "frames" in outcome:
+        # An sh failure: the command's output may hold anything (a stack
+        # line, "x is not defined"), so only the stack is rewritten, and it
+        # goes under the first line, where the model looks for its line.
+        head, sep, rest = error.partition("\n")
+        frames = _positions(str(outcome.get("frames") or "")).strip("\n")
+        error = head + ("\n" + frames if frames else "") + sep + rest
+    else:
+        error = _user_lines(error).removeprefix("Error: ")
     # The calls come before the console output: a result over the limit is
     # cut from its end, and which calls ran must survive the cut.
     lines = [f"Error: {error}"]
     if done:
         lines.append(f"Calls that finished before the error ({len(done)}):")
-        lines.extend(" ".join(f"- {c['name']} {c['subject']}".split()) + f": {c['status']}" for c in done[-40:])
+        lines.extend(" ".join(f"- {c['name']} {c['subject']}".split()) + f": {c['status']}"
+                     + (f", exit {c['exit_code']}" if "exit_code" in c else "") for c in done[-40:])
     else:
         lines.append("No tool calls finished before the error.")
     if stopped:

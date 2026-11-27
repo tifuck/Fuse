@@ -234,7 +234,8 @@ def _declared():
     """The parameters run_code's description declares for each helper: {name: {param: (type, optional)}}."""
     desc = code_mode.SCHEMA["function"]["description"]
     out = {}
-    for m in re.finditer(r"declare function (\w+)\(a\??: \{", desc):
+    # sh(command: string, a?: {...}) declares its options after the command.
+    for m in re.finditer(r"declare function (\w+)\((?:command: string, )?a\??: \{", desc):
         depth, j = 1, m.end()
         while depth:
             depth += {"{": 1, "}": -1}.get(desc[j], 0)
@@ -258,9 +259,10 @@ def _declared():
 
 def test_every_parameter_run_code_declares_is_one_the_real_tool_takes():
     declared = _declared()
-    assert set(declared) == set(HELPERS)
+    assert set(declared) == set(HELPERS) | {"sh"}
+    declared["sh"]["command"] = ("string", False)
     for name, params in declared.items():
-        real = agent_catalog.schema(name)["function"]["parameters"]
+        real = agent_catalog.schema("run_terminal_command" if name == "sh" else name)["function"]["parameters"]
         assert set(params) <= set(real["properties"]), name
         assert set(real.get("required") or []) <= {k for k, (_, optional) in params.items() if not optional}, name
 
@@ -273,7 +275,9 @@ def test_every_documented_call_form_reaches_the_tool():
             return kind.split('"')[1]
         return {"string": "x", "number": 1, "boolean": True, "string[]": ["x"]}[kind.split()[0]]
 
-    full = [(name, {k: sample(kind) for k, (kind, _) in params.items()}) for name, params in _declared().items()]
+    full = [(name, {k: sample(kind) for k, (kind, _) in params.items()}) for name, params in _declared().items()
+            if name != "sh"]
+    sh_options = {k: sample(kind) for k, (kind, _) in _declared()["sh"].items()}
     forms = [
         ("read_file('a.py')", ("read_file", {"path": "a.py"})),
         ("list_dir('src')", ("list_dir", {"path": "src"})),
@@ -285,8 +289,12 @@ def test_every_documented_call_form_reaches_the_tool():
         ("search_replace({path: 'a.py', edits: [{old_string: 'a', new_string: 'b'}]})",
          ("search_replace", {"path": "a.py", "edits": [{"old_string": "a", "new_string": "b"}]})),
         ("run_terminal_command('make')", ("run_terminal_command", {"command": "make"})),
+        ("sh('make')", ("run_terminal_command", {"command": "make"})),
+        (f"sh('make', {json.dumps(sh_options)})", ("run_terminal_command", {"command": "make", **sh_options})),
+        ("sh({command: 'make', cwd: 'web'})", ("run_terminal_command", {"command": "make", "cwd": "web"})),
     ]
-    runner = Runner()
+    # sh needs exit code 0 to return.
+    runner = Runner(lambda name, args: ("From host box:\nok", {"status": "done", "host": "box", "exit_code": 0}))
     code = "".join(f"await {name}({json.dumps(args)});\n" for name, args in full)
     code += "".join(f"await {js};\n" for js, _ in forms) + "return 'all ran';"
 
@@ -307,6 +315,8 @@ def test_every_refused_helper_call_names_the_helper_and_the_fix():
         "read_file(['a', 'b'])": "read_file takes one argument object",
         "glob({pattern: '*', host: 'box', sort: 'name', depth: 1})": "glob has no argument depth",
         "run_terminal_command({command: 'make', background: true})": "call run_terminal_command directly",
+        "sh({command: 'make', shell: 'bash'})": "run_terminal_command has no argument shell; it takes command",
+        "sh('make', {dir: 'web'})": "run_terminal_command has no argument dir; it takes command",
         "__call('monitor', '{}')": "monitor is not available in run_code (available: read_file",
     }
     code = "const out = [];\n" + "".join(
@@ -319,6 +329,17 @@ def test_every_refused_helper_call_names_the_helper_and_the_fix():
     for (js, want), message in zip(cases.items(), got):
         assert want in message, (js, message)
     assert runner.calls == []
+
+
+def test_a_failed_sh_with_long_output_keeps_its_tail_and_says_it_was_cut():
+    output = "FIRST-LINE\n" + "x" * 20_000 + "\nLAST-LINE"
+    answer = lambda name, args: (f"From host box:\nstatus: completed\nexit_code: 2\n\n{output}",  # noqa: E731
+                                 {"status": "done", "host": "box", "exit_code": 2})
+
+    text, trace = run_code("await sh('make');", Runner(answer))
+
+    assert text.startswith("Error: sh make: exited 2\n") and "LAST-LINE" in text and "FIRST-LINE" not in text
+    assert f"--- output, last 8000 of {len(output)} characters ---" in text
 
 
 def test_a_flood_of_refused_calls_ends_the_run_with_its_cause():

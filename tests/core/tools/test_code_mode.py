@@ -123,6 +123,51 @@ def test_a_failed_call_throws_into_the_code_and_an_uncaught_one_lists_what_finis
     assert "- write_file out.txt: done" in text and "- read_file missing.txt: error" in text
 
 
+def command_answer(exit_code, output, status="completed", job=""):
+    """A Runner answer: run_terminal_command's text and trace for a command in
+    this state; any other call is saved."""
+    def answer(name, args):
+        if name != "run_terminal_command":
+            return "From host box:\nsaved", {"name": name, "status": "done", "host": "box"}
+        head = [f"status: {status}"] + ([f"id: {job}"] if job else []) + ([f"exit_code: {exit_code}"] if status == "completed" else [])
+        trace = {"name": name, "status": "running" if status == "running" else "done", "host": "box", "exit_code": exit_code}
+        return "From host box:\n" + "\n".join(head) + f"\n\n{output}", trace
+    return answer
+
+
+def test_sh_returns_the_output_of_a_command_that_exits_0():
+    text, trace = run_code("return await sh('make check');", Runner(command_answer(0, "checks ok\n")))
+
+    assert trace["status"] == "done" and text.startswith("checks ok\n")
+
+
+def test_a_failed_sh_stops_the_code_with_its_output_intact_and_the_users_line():
+    # Output that reads like a stack line and an undefined name: neither may be rewritten or hinted at.
+    output = "FAIL test_x\n    at Object.<anonymous> (<anonymous>:12:5)\nReferenceError: foo is not defined\n"
+    runner = Runner(command_answer(1, output))
+
+    text, trace = run_code("await write_file('a.txt', 'x');\nawait sh('npm   test');\nawait write_file('b.txt', 'y');", runner)
+
+    assert trace["status"] == "error" and trace["kind"] == "code_error"
+    first, at, *_ = text.splitlines()
+    assert first == "Error: sh npm test: exited 1" and "line 2" in at
+    assert "--- output ---\n" + output in text
+    assert "backtick" not in text and "run_code provides only" not in text
+    assert "- run_terminal_command npm test: done, exit 1" in text and "- write_file a.txt: done\n" in text
+    assert [args.get("path") or args.get("command") for _, args in runner.calls] == ["a.txt", "npm   test"]
+
+
+def test_code_that_catches_a_failed_sh_goes_on_and_a_command_left_running_names_its_id():
+    runner = Runner(command_answer(None, "recent output:\nbuilding", status="running", job="job_7"))
+
+    text, trace = run_code("let why = '';\ntry { await sh('make build'); } catch (e) { why = e.message; }\n"
+                           "await write_file('log.txt', why);\nreturn why;", runner)
+
+    assert trace["status"] == "done"
+    assert text.startswith("sh make build: moved to the background as job_7 and has not finished; do not run it again")
+    assert [name for name, _ in runner.calls] == ["run_terminal_command", "write_file"]
+
+
 def test_the_row_keeps_the_code_apart_from_what_the_model_got():
     text, trace = run_code("return 1 + 1;", Runner(), description="Add")
 
