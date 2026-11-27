@@ -198,48 +198,15 @@
 </div>
 {% endmacro %}
 
-{% macro source_stats(a) %}
-  {% set fuse = a.fuse %}
-  {% set plan = a.billing %}
-  <div class="source-stats">
-    <div>
-      <p class="metric-label">Fuse lifetime</p>
-      <p class="metric-value">{{ '{:,}'.format(fuse.display_tokens) }}</p>
-      {% if fuse.has %}
-      <p class="stat-facts">
-        <span><b>In</b> {{ '{:,}'.format(fuse.prompt_tokens) }}{% if fuse.cached_tokens %} <span class="dim">({{ '{:,}'.format(fuse.cached_tokens) }} cached)</span>{% endif %}</span>
-        <span><b>Out</b> {{ '{:,}'.format(fuse.output_tokens) }}</span>
-        {% if fuse.reasoning_tokens %}<span><b>Reasoning</b> {{ '{:,}'.format(fuse.reasoning_tokens) }}</span>{% endif %}
-      </p>
-      <p class="usage-sub">{% if fuse.cost_label %}{{ fuse.cost_label }} {% if fuse.cost_partial %}partial {% endif %}API equiv · {% elif fuse.cost_unavailable %}API equivalent unavailable · {% endif %}{{ '{:,}'.format(fuse.requests) }} request{{ 's' if fuse.requests != 1 else '' }}{% if fuse.week_tokens %} · this week {{ '{:,}'.format(fuse.week_tokens) }}{% endif %}{% if fuse.since %} · since linked {{ fuse.since }}{% endif %}</p>
-      {% elif fuse.week_only %}
-      <p class="usage-sub">this week · {{ '{:,}'.format(fuse.week_requests) }} request{{ 's' if fuse.week_requests != 1 else '' }}</p>
-      {% else %}
-      <p class="usage-sub">No traffic through Fuse yet</p>
-      {% endif %}
-    </div>
-    <div>
-      <p class="metric-label">Plan</p>
-      <p class="metric-value">{{ plan.percent_label if plan and plan.available else '—' }}</p>
-      <div class="usage-meter" aria-hidden="true"><span style="--pct: {{ plan.meter if plan else 0 }}%"></span></div>
-      {% if plan and plan.products %}
-      <p class="stat-facts">
-        {% for p in plan.products %}
-        <span><b>{{ p.name }}</b> {{ p.percent_label }}</span>
-        {% endfor %}
-      </p>
-      {% endif %}
-      {% if plan and plan.money %}
-      <p class="stat-facts">
-        {% for m in plan.money %}
-        <span><b>{{ m.label }}</b> {{ m.text }}</span>
-        {% endfor %}
-      </p>
-      {% endif %}
-      <p class="usage-sub">{% if plan and plan.available %}Provider {{ plan.period|lower }} usage{% if plan.period_end %} · resets {{ plan.period_end }}{% endif %}{% else %}No current usage reading{% if plan and plan.period_end %} · window resets {{ plan.period_end }}{% endif %}{% endif %}{% if plan and plan.error %} · refresh error: {{ plan.error }}{% endif %}</p>
-    </div>
-  </div>
-{% endmacro %}
+{# Model list cells (sources/_models.html and the OpenRouter and NanoGPT
+   panels): a context window and a per-million price. #}
+{% macro ctx_label(n) -%}
+  {%- if n and n >= 1000000 %}{{ '%g'|format((n / 1000000)|round(1)) }}M{% elif n %}{{ (n / 1000)|round|int }}K{% else %}—{% endif -%}
+{%- endmacro %}
+
+{% macro usd_m(v) -%}
+  {%- if v is none %}—{% else %}${{ '%g'|format(v) }}{% endif -%}
+{%- endmacro %}
 
 {% macro source_table(accounts, kind, revoke_path, confirm, empty, ui=None) %}
 {% if accounts %}
@@ -338,7 +305,8 @@
 {% if not accounts %}{{ source_table(accounts, kind, revoke_path, confirm, empty, ui) }}{% endif %}
 {% endmacro %}
 
-{# One provider in the rail. The section tabs in app.js show its pane
+{# One provider in the rail, the bar of connected sources over the open
+   one, by group. The section tabs in app.js show its pane
    (#pool-<id>) and hide the rest. A provider you have not connected is a
    hidden tab: Add source opens it through its link. #}
 {% macro rail_link(id, title, sub, n=0, alert=False, hidden=False) -%}
@@ -401,8 +369,7 @@
   {% endif %}
 
   <div class="sources-dir">
-  <button type="button" class="btn sources-add" data-dialog-open="source-picker" aria-haspopup="dialog">Add source</button>
-  <nav class="sources-rail" data-section-tabs aria-label="Connected sources" aria-orientation="vertical"{% if flash_pane %} data-start="pool-{{ flash_pane }}"{% endif %}>
+  <nav class="sources-rail" data-section-tabs aria-label="Connected sources"{% if flash_pane %} data-start="pool-{{ flash_pane }}"{% endif %}>
     {% if not connected %}
     <p class="sources-rail-empty">Nothing connected yet.</p>
     <a href="#sources-start" hidden></a>
@@ -410,16 +377,21 @@
     {% for group, group_label in groups %}
     {% set mine = connected|selectattr('5', 'equalto', group)|list %}
     {% if mine %}
-    <p class="sources-rail-group" aria-hidden="true">{{ group_label }}</p>
-    {% for id, title, sub, n, signed_out, _g, _names in mine %}
-    {{ rail_link(id, title, sub, n, signed_out) }}
-    {% endfor %}
+    <div class="sources-rail-set">
+      <p class="sources-rail-group" aria-hidden="true">{{ group_label }}</p>
+      <div class="sources-rail-items">
+        {% for id, title, sub, n, signed_out, _g, _names in mine %}
+        {{ rail_link(id, title, sub, n, signed_out) }}
+        {% endfor %}
+      </div>
+    </div>
     {% endif %}
     {% endfor %}
     {% for id, title, sub, n, signed_out, _g, _names in src.all|rejectattr('3') %}
     {{ rail_link(id, title, sub, hidden=True) }}
     {% endfor %}
   </nav>
+  <button type="button" class="btn sources-add" data-dialog-open="source-picker" aria-haspopup="dialog">Add source</button>
   <div class="sources-pane">
     <button type="button" class="sources-back" data-sources-back>All sources</button>
 
@@ -908,6 +880,31 @@
 </dialog>
 
 {% for p in keyed %}{% include "sources/_connect_dialog.html" %}{% endfor %}
+
+{% if openrouter_account %}
+<dialog class="modal" id="openrouter-replace-dialog" aria-labelledby="openrouter-replace-title">
+  <div class="modal-shell">
+    <header class="modal-head">
+      <div>
+        <p class="metric-label">OpenRouter · API key</p>
+        <h2 id="openrouter-replace-title">Replace your OpenRouter key</h2>
+      </div>
+      <button type="button" class="btn ghost sm" data-dialog-close aria-label="Close OpenRouter key dialog">Close</button>
+    </header>
+    <p class="aside">From openrouter.ai/settings/keys. Other users cannot use it. Your models, pinned providers and routing stay as they are.</p>
+    <form method="post" action="/sources/openrouter/add" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>API key
+        <input name="api_key" type="password" autocomplete="off" required autofocus placeholder="sk-or-v1-…">
+      </label>
+      <label>Label (optional)
+        <input name="label" maxlength="80" placeholder="OpenRouter key">
+      </label>
+      <button type="submit" class="btn">Replace my key</button>
+    </form>
+  </div>
+</dialog>
+{% endif %}
 
 {{ pool_share_dialog(nanogpt_ui, nanogpt_accounts) }}
 {{ pool_share_dialog(refuseless_ui, refuseless_accounts) }}

@@ -94,7 +94,6 @@
   .auth-card { width: 100%; }
   .lede { max-width: none; }
 
-  .source-stats { grid-template-columns: 1fr; gap: 0.85rem; }
   :where(html:not(.is-chat-root)) .catalog-copy { opacity: 1; }
   :where(html:not(.is-chat-root)) .modal-shell { padding: 1rem; }
   .device-code { align-items: flex-start; flex-direction: column; gap: 0.35rem; }

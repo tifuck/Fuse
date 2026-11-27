@@ -204,7 +204,7 @@ textarea { min-height: 8rem; resize: vertical; }
   border-color: color-mix(in srgb, var(--brass) 35%, transparent);
   background: color-mix(in srgb, var(--brass) 12%, transparent);
 }
-.account.held, .source-card.held {
+.account.held, .or-account.held {
   box-shadow: inset 2px 0 0 var(--fault);
 }
 

@@ -418,8 +418,9 @@ def set_paid_model(user_id: int, upstream: str, on: bool) -> bool:
 #
 # OpenRouter account settings cannot be changed from here, so Fuse applies the
 # user's choices per request through the documented `provider` object:
-# `only` (per-model provider allowlist), `data_collection` and `zdr`.
-# Fallbacks stay on, so OpenRouter still moves between the allowed providers.
+# `only` (per-model provider allowlist), `data_collection`, `zdr` and
+# `quantizations` (the precision floor). Fallbacks stay on, so OpenRouter
+# still moves between the allowed providers.
 
 ENDPOINTS_TTL = 3600.0
 PROVIDERS_TTL = 86400.0
@@ -428,10 +429,15 @@ MAX_PREF_MODELS = 200
 MAX_PREF_SLUGS = 50
 _endpoints: dict[str, tuple[float, list[dict]]] = {}
 _providers: tuple[float, dict[str, dict]] | None = None
+# Precision floor -> the quantizations OpenRouter may route to ("fp8" covers
+# mxfp8). Closed models and many hosts publish none ("unknown"), so those
+# stay allowed unless the user also skips them.
+PRECISIONS = {"fp8": ("fp8", "fp16", "bf16", "fp32"), "fp16": ("fp16", "bf16", "fp32")}
 
 
 def provider_prefs(user_id: int | None) -> dict:
-    """{"data_collection": "deny"|None, "zdr": bool, "models": {upstream: [slugs]}}"""
+    """{"data_collection": "deny"|None, "zdr": bool, "min_precision": None|"fp8"|"fp16",
+    "precision_unknown": bool, "models": {upstream: [slugs]}}"""
     owned = user_credential(user_id) if user_id else None
     raw = owned[1].get("provider_prefs") if owned else None
     raw = raw if isinstance(raw, dict) else {}
@@ -444,6 +450,8 @@ def provider_prefs(user_id: int | None) -> dict:
     return {
         "data_collection": "deny" if raw.get("data_collection") == "deny" else None,
         "zdr": raw.get("zdr") is True,
+        "min_precision": raw.get("min_precision") if raw.get("min_precision") in PRECISIONS else None,
+        "precision_unknown": raw.get("precision_unknown") is not False,
         "models": clean,
     }
 
@@ -463,6 +471,26 @@ def set_privacy(user_id: int, *, data_collection_deny: bool, zdr: bool) -> bool:
     prefs["data_collection"] = "deny" if data_collection_deny else None
     prefs["zdr"] = bool(zdr)
     return _save_provider_prefs(user_id, prefs)
+
+
+def set_precision(user_id: int, *, floor: str | None, allow_unknown: bool) -> bool:
+    """floor: a PRECISIONS key, or None for any precision."""
+    prefs = provider_prefs(user_id)
+    prefs["min_precision"] = floor if floor in PRECISIONS else None
+    prefs["precision_unknown"] = bool(allow_unknown)
+    return _save_provider_prefs(user_id, prefs)
+
+
+def precision_ok(quantization: str, prefs: dict | None) -> bool:
+    """Whether the floor lets a provider serving this quantization ("" when
+    it publishes none) take requests."""
+    floor = (prefs or {}).get("min_precision")
+    if floor not in PRECISIONS:
+        return True
+    q = (quantization or "unknown").lower()
+    if q == "unknown":
+        return (prefs or {}).get("precision_unknown", True)
+    return q.removeprefix("mx") in PRECISIONS[floor]
 
 
 def set_model_providers(user_id: int, upstream: str, slugs: list[str]) -> bool:
@@ -489,6 +517,9 @@ def _provider_routing(prefs: dict | None, upstream: str) -> dict:
         out["data_collection"] = "deny"
     if prefs.get("zdr"):
         out["zdr"] = True
+    floor = prefs.get("min_precision")
+    if floor in PRECISIONS:
+        out["quantizations"] = list(PRECISIONS[floor]) + (["unknown"] if prefs.get("precision_unknown", True) else [])
     return out
 
 
@@ -564,6 +595,7 @@ def _parse_endpoints(items, directory: dict[str, dict]) -> list[dict]:
         row["variants"].sort(key=lambda v: (v["input"] is None, v["input"] or 0, v["output"] or 0))
         lead = row["variants"][0]
         row.update({k: lead[k] for k in ("input", "output", "cache_read", "context", "quantization")})
+        row["quantizations"] = sorted({v["quantization"] for v in row["variants"]} - {""})
         row["up"] = any(v["up"] for v in row["variants"])
         uptimes = [v["uptime"] for v in row["variants"] if v["uptime"] is not None]
         row["uptime"] = round(max(uptimes), 1) if uptimes else None

@@ -280,28 +280,13 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
    sharers-only donors): readable, but quieter than the ones they use. */
 .source-table tr.is-unrouted td { color: var(--mute); }
 .source-table tr.is-unrouted .source-account-name { opacity: 0.8; }
-.source-card .metric-value {
-  font-size: clamp(1.15rem, 2vw, 1.45rem);
-  margin: 0.28rem 0 0.2rem;
-}
-.source-stats {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem 1.5rem;
-  margin-top: 0.75rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--line);
-}
-.source-stats .usage-meter { margin: 0.45rem 0 0.35rem; max-width: none; }
-.source-stats .stat-facts { margin-top: 0.4rem; }
-.source-card > .callout { margin: 0.85rem 0 0; }
 .sources-page .usage-note { margin: 0; }
 .sources-page .stack-y > .section-heading { margin-bottom: 0; }
 
 
 /* —— Sources ——
-   A rail of providers beside one provider at a time: the section tabs in
-   app.js show the pane the rail picks (#pool-<kind>). In a pane the header is
+   A bar of connected providers over one provider at a time: the section tabs
+   in app.js show the pane the bar picks (#pool-<kind>). In a pane the header is
    three fixed columns — identity and status, the pool's usage meters, then
    Sharing and the add action. Breakpoints follow the page's and the pane's
    own widths (they sit beside the settings rail), not the viewport. */
@@ -316,51 +301,45 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 }
 .sources-how summary:hover, .sources-how[open] summary { color: var(--mist); }
 .sources-how .sources-note { margin-top: 0.35rem; }
-/* Add source and the connected sources in the first column; the open
-   provider beside them, spanning both rows (1fr takes its extra height). */
+/* The connected sources as a bar of chips, one cluster per group, with Add
+   source at its end; the open provider takes the full width under it. */
 .sources-dir {
   display: grid;
-  grid-template-columns: 14rem minmax(0, 1fr);
-  grid-template-rows: auto 1fr;
-  gap: 0.75rem 1.5rem;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem 1.5rem;
+  align-items: end;
 }
-.sources-add { grid-column: 1; grid-row: 1; width: 100%; }
+.sources-rail { grid-column: 1; grid-row: 1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.85rem 1.75rem; min-width: 0; }
+.sources-add { grid-column: 2; grid-row: 1; }
 .sources-add::before { content: "+"; margin-right: 0.45rem; font-weight: 600; }
-.sources-rail {
-  grid-column: 1;
-  grid-row: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding-right: 0.75rem;
-  border-right: 1px solid var(--line);
-}
-.sources-rail-empty { margin: 0.2rem 0.55rem; color: var(--mute); font: 0.74rem/1.4 var(--mono); }
+.sources-rail-empty { margin: 0; color: var(--mute); font: 0.74rem/1.4 var(--mono); align-self: center; }
+.sources-rail-set { display: grid; gap: 0.4rem; min-width: 0; }
 .sources-rail-group {
-  margin: 0.9rem 0.55rem 0.25rem;
+  margin: 0;
   color: var(--mute);
   font: 500 0.62rem/1.2 var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.sources-rail-group:first-child { margin-top: 0.2rem; }
+.sources-rail-items { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .sources-rail a {
   display: grid;
-  grid-template-columns: 1.05rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.05rem auto auto;
   align-items: center;
-  column-gap: 0.55rem;
+  column-gap: 0.5rem;
   min-height: 2.75rem;
-  padding: 0.35rem 0.55rem;
-  border-radius: 6px;
+  max-width: 17rem;
+  padding: 0.3rem 0.75rem 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   color: var(--mist);
   text-decoration: none;
 }
 .sources-rail a[hidden] { display: none; }
-.sources-rail a:hover { background: color-mix(in srgb, var(--mist) 4%, transparent); }
-.sources-rail a.on { background: var(--raise); box-shadow: inset 2px 0 0 var(--brass); }
-.sources-rail a:focus-visible { outline: 2px solid var(--steel); outline-offset: -2px; }
-.sources-rail .provider-logo { width: 1.05rem; height: 1.05rem; }
+.sources-rail a:hover { background: color-mix(in srgb, var(--mist) 4%, transparent); border-color: color-mix(in srgb, var(--mist) 22%, transparent); }
+.sources-rail a.on { background: var(--raise); border-color: var(--brass); }
+.sources-rail a:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+.sources-rail .provider-logo { grid-row: 1 / span 2; width: 1.05rem; height: 1.05rem; }
 .sources-rail-name { overflow: hidden; font: 500 0.82rem/1.3 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .sources-rail-n { color: var(--mute); font: 0.7rem/1 var(--mono); }
 .sources-rail-alert { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--fault); }
@@ -372,7 +351,7 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sources-pane { grid-column: 2; grid-row: 1 / span 2; container: pools / inline-size; min-width: 0; }
+.sources-pane { grid-column: 1 / -1; grid-row: 2; container: pools / inline-size; min-width: 0; padding-top: 1.25rem; border-top: 1px solid var(--line); }
 .sources-pane > [hidden] { display: none; }
 .sources-start { align-items: flex-start; }
 .sources-start h2 { margin: 0; font: 600 1.1rem/1.25 var(--mono); }
@@ -391,30 +370,34 @@ label.share-option:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
 }
 .sources-back::before { content: "‹"; font-size: 1.3rem; line-height: 1; }
 .sources-back:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
-/* A phone: the rail is the first screen (data-view="list") and a provider
-   opens in its place ("pane"), each row larger and marked to open. */
+/* A phone: the sources list is the first screen (data-view="list") and a
+   provider opens in its place ("pane"), each row larger and marked to open. */
 @container sources (max-width: 40rem) {
-  .sources-dir { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .sources-dir { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
   .sources-dir > * { grid-column: 1; grid-row: auto; }
   .sources-dir[data-view="list"] .sources-pane,
   .sources-dir[data-view="pane"] :is(.sources-rail, .sources-add) { display: none; }
-  .sources-add { min-height: 2.75rem; }
+  .sources-add { order: -1; min-height: 2.75rem; }
+  .sources-pane { padding-top: 0; border-top: 0; }
   .sources-page:has(> .sources-dir[data-view="pane"]) > .sources-how { display: none; }
   .sources-back { display: inline-flex; }
-  .sources-rail { padding-right: 0; border-right: 0; }
-  .sources-rail-group { margin: 1.1rem 0 0.35rem; }
+  .sources-rail, .sources-rail-items { display: block; }
+  .sources-rail-set { display: block; margin-top: 1.1rem; }
+  .sources-rail-group { margin-bottom: 0.35rem; }
   .sources-rail a {
     grid-template-columns: 1.25rem minmax(0, 1fr) auto auto;
     column-gap: 0.7rem;
+    max-width: none;
     min-height: 3.5rem;
     padding: 0.5rem 0.25rem;
-    border-radius: 0;
+    border: 0;
     border-top: 1px solid var(--line);
+    border-radius: 0;
   }
-  .sources-rail-group + a { border-top: 0; }
-  .sources-rail a.on { background: none; box-shadow: none; }
+  .sources-rail-items > a:first-child { border-top: 0; }
+  .sources-rail a.on { background: none; }
   .sources-rail a::after { content: "›"; grid-column: 4; grid-row: 1 / span 2; color: var(--mute); font-size: 1.2rem; }
-  .sources-rail .provider-logo { width: 1.25rem; height: 1.25rem; grid-row: 1 / span 2; }
+  .sources-rail .provider-logo { width: 1.25rem; height: 1.25rem; }
   .sources-rail-name { font-size: 0.92rem; }
   .sources-rail small { grid-column: 2 / 4; font-size: 0.74rem; }
 }

@@ -4,20 +4,20 @@
         <p class="pool-state{% if openrouter_account %} is-ok{% endif %}"><b>{% if openrouter_account %}Key linked{% else %}No key{% endif %}</b><span>personal, never shared</span></p>
       </div>
     </header>
-    <p class="sources-note">Your own key. Models you turn on show in your picker as <code>openrouter/…</code> and bill to it.</p>
-    {% if not openrouter_user_key %}
-    <p class="callout">Add your OpenRouter key to choose models and providers.</p>
-    {% endif %}
+    <p class="sources-note">Your own key, billed per token. Models you turn on show in your picker as <code>openrouter/…</code>.</p>
     {% if openrouter_flash_msg %}
     <p class="callout {% if openrouter_flash_kind == 'ok' %}ok{% else %}fault{% endif %}" role="alert">{{ openrouter_flash_msg }}</p>
     {% endif %}
 
     {% if openrouter_account %}
     {% set a = openrouter_account %}
-    <article class="panel source-card{% if not a.authed %} held{% endif %}" data-or-scope>
-      <div class="section-heading">
-        <h2>{{ source_identity(a) }}{% if a.free_tier %} <span class="badge">Free tier</span>{% elif a.authed %} <span class="badge on">Linked</span>{% endif %}{{ source_auth(a) }}</h2>
+    {% set fuse = a.fuse %}
+    {% set limit = a.key_info.limit if a.key_info else none %}
+    <article class="panel or-account{% if not a.authed %} held{% endif %}">
+      <div class="or-account-head">
+        <h3 class="or-account-key">{{ source_identity(a) }}{% if a.free_tier %} <span class="badge">Free tier</span>{% elif a.authed %} <span class="badge on">Linked</span>{% endif %}{{ source_auth(a) }}</h3>
         <div class="row-actions">
+          <button type="button" class="btn sm ghost" data-dialog-open="openrouter-replace-dialog" aria-haspopup="dialog">Replace key</button>
           {% if a.can_revoke %}
           <form method="post" action="/sources/openrouter/{{ a.id }}/revoke" data-confirm="Remove your OpenRouter key? Other users are not affected.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -26,20 +26,41 @@
           {% endif %}
         </div>
       </div>
-      {{ source_stats(a) }}
-      {% set p = openrouter_privacy %}
-      <div class="or-settings" data-or-settings>
+      <div class="or-account-stats">
+        <div>
+          <p class="metric-label">Through Fuse</p>
+          <p class="metric-value">{{ '{:,}'.format(fuse.display_tokens) }}<small> tokens</small></p>
+          <p class="usage-sub">{% if fuse.has %}In {{ '{:,}'.format(fuse.prompt_tokens) }}{% if fuse.cached_tokens %} ({{ '{:,}'.format(fuse.cached_tokens) }} cached){% endif %} · Out {{ '{:,}'.format(fuse.output_tokens) }} · {{ '{:,}'.format(fuse.requests) }} request{{ 's' if fuse.requests != 1 else '' }}{% elif fuse.week_only %}This week · {{ '{:,}'.format(fuse.week_requests) }} request{{ 's' if fuse.week_requests != 1 else '' }}{% else %}No traffic through Fuse yet{% endif %}</p>
+        </div>
+        <div>
+          <p class="metric-label">Spent on this key</p>
+          <p class="metric-value">${{ '%.2f'|format(a.usage) }}</p>
+          <p class="usage-sub">Every app using it, as OpenRouter reports{% if fuse.since %} · linked {{ fuse.since.rsplit(' ', 2)[0] }}{% endif %}</p>
+        </div>
+        <div>
+          <p class="metric-label">Left on this key</p>
+          {% if a.remaining is not none %}
+          <p class="metric-value">${{ '%.2f'|format(a.remaining|float) }}</p>
+          {% if limit %}<div class="usage-meter" aria-hidden="true"><span style="--pct: {{ 100 - a.billing.meter }}%"></span></div>{% endif %}
+          <p class="usage-sub">{% if limit %}of a ${{ '%g'|format(limit|float) }} limit{% else %}Credit balance{% endif %}</p>
+          {% else %}
+          <p class="metric-value">—</p>
+          <p class="usage-sub">No spending limit on this key</p>
+          {% endif %}
+        </div>
+      </div>
+      {% if a.key_info and a.key_info.last_error %}
+      <p class="callout fault">{{ a.key_info.last_error }}</p>
+      {% endif %}
+    </article>
+
+    {% set p = openrouter_privacy %}
+    <div class="or-manage" data-or-scope>
+    <section class="or-routing" data-or-settings aria-labelledby="or-routing-title">
+      <h3 class="or-section-title" id="or-routing-title">Routing <span>on every request</span></h3>
+      <div class="or-routing-grid">
         <fieldset class="or-group">
-          <legend>Models</legend>
-          {% for g in openrouter_groups %}
-          <label class="or-switch">
-            <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
-            <span><b>{% if g.id == 'free' %}Free models{% else %}Every paid model{% endif %}</b><small>{% if g.id == 'free' %}Every <code>:free</code> model on or off. Free models never cost credits.{% else %}Every paid model on or off.{% endif %} Single models below stay editable.</small></span>
-          </label>
-          {% endfor %}
-        </fieldset>
-        <fieldset class="or-group">
-          <legend>Privacy, on every request</legend>
+          <legend>Privacy</legend>
           <label class="or-switch">
             <input type="checkbox" role="switch" data-or-setting="data_collection_deny" {% if p.data_collection == 'deny' %}checked{% endif %}>
             <span><b>Skip providers that may keep prompts</b><small>Sends <code>data_collection: deny</code>. Some models then have no provider.</small></span>
@@ -49,24 +70,55 @@
             <span><b>Zero data retention only</b><small>Sends <code>zdr: true</code>. Stricter, and fewer providers qualify.</small></span>
           </label>
         </fieldset>
+        <fieldset class="or-group">
+          <legend>Precision</legend>
+          <div class="or-floor">
+            <span class="or-floor-label" id="or-floor-label">Lowest precision a provider may serve</span>
+            <div class="or-seg" role="group" aria-labelledby="or-floor-label">
+              {% for value, text in [('', 'Any'), ('fp8', 'FP8 and up'), ('fp16', '16-bit only')] %}
+              <button type="button" data-or-setting="min_precision" value="{{ value }}" aria-pressed="{{ 'true' if (p.min_precision or '') == value else 'false' }}"{% if (p.min_precision or '') == value %} class="on"{% endif %}>{{ text }}</button>
+              {% endfor %}
+            </div>
+            <small>Skips hosts serving FP4, INT4 and other cut-down weights. Sends <code>quantizations</code>.</small>
+          </div>
+          <label class="or-switch">
+            <input type="checkbox" role="switch" data-or-setting="precision_unknown" {% if p.precision_unknown %}checked{% endif %}{% if not p.min_precision %} disabled{% endif %}>
+            <span><b>Allow providers that don't publish precision</b><small>Claude, GPT, Gemini and many hosts publish none. Turned off, those models may have no provider.</small></span>
+          </label>
+        </fieldset>
       </div>
+    </section>
 
-      <section class="or-models" data-or-models data-prefs="/sources/models/openrouter">
-        <div class="or-toolbar">
-          <input type="search" data-or-filter placeholder="Search models, e.g. glm, deepseek, anthropic/" aria-label="Search OpenRouter models">
-          <div class="or-seg" role="group" aria-label="Show">
-            <button type="button" class="on" data-or-view="all" aria-pressed="true">All</button>
-            <button type="button" data-or-view="on" aria-pressed="false">On</button>
-            <button type="button" data-or-view="off" aria-pressed="false">Off</button>
-            <button type="button" data-or-view="pinned" aria-pressed="false">Pinned</button>
-            <button type="button" data-or-view="free" aria-pressed="false">Free</button>
-          </div>
-          <div class="or-bulk" role="group" aria-label="Every model">
-            <button type="button" class="btn sm ghost" data-ml-all="1">All on</button>
-            <button type="button" class="btn sm ghost" data-ml-all="0">All off</button>
-          </div>
-          <span class="or-count" data-or-count aria-live="polite"></span>
+    <section class="or-models" data-or-models data-prefs="/sources/models/openrouter" aria-labelledby="or-models-title">
+      <div class="or-models-head">
+        <h3 class="or-section-title" id="or-models-title">Models</h3>
+        <span class="or-count" data-or-count aria-live="polite"></span>
+      </div>
+      <div class="or-groups">
+        {% for g in openrouter_groups %}
+        <label class="or-switch">
+          <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
+          <span><b>{% if g.id == 'free' %}Free models{% else %}Every paid model{% endif %}</b><small>{% if g.id == 'free' %}Every <code>:free</code> model. Never costs credits.{% else %}Every model billed to your key.{% endif %} Single models below stay editable.</small></span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="or-toolbar">
+        <input type="search" data-or-filter placeholder="Search models, e.g. glm, deepseek, anthropic/" aria-label="Search OpenRouter models">
+        <div class="or-seg" role="group" aria-label="Show">
+          <button type="button" class="on" data-or-view="all" aria-pressed="true">All</button>
+          <button type="button" data-or-view="on" aria-pressed="false">On</button>
+          <button type="button" data-or-view="off" aria-pressed="false">Off</button>
+          <button type="button" data-or-view="free" aria-pressed="false">Free</button>
+          <button type="button" data-or-view="paid" aria-pressed="false">Paid</button>
+          <button type="button" data-or-view="pinned" aria-pressed="false">Pinned</button>
         </div>
+        <div class="or-bulk" role="group" aria-label="Every model">
+          <button type="button" class="btn sm ghost" data-ml-all="1">All on</button>
+          <button type="button" class="btn sm ghost" data-ml-all="0">All off</button>
+        </div>
+      </div>
+      <div class="or-scroll">
+        <div class="or-head" aria-hidden="true"><span></span><span>Model</span><span class="or-h-ctx">Context</span><span>Input /M</span><span>Output /M</span><span>Providers</span></div>
         <ul class="or-list" data-or-list>
           {% for m in openrouter_models %}
           <li class="or-row{% if m.enabled %} is-on{% endif %}" data-or-row data-id="{{ m.id }}" data-model="{{ m.model }}" data-group="{{ m.group }}" data-free="{{ '1' if m.free else '0' }}" data-pinned="{{ m.pinned }}">
@@ -78,7 +130,8 @@
                 <span class="or-row-name">{{ m.name }}</span>
                 <code class="or-row-id">{{ m.id }}</code>
               </div>
-              <span class="or-row-price">{% if m.free %}<span class="or-free">Free</span>{% elif m.input is not none %}<span>${{ '%g'|format(m.input) }}<i>in/M</i></span><span>${{ '%g'|format(m.output) }}<i>out/M</i></span>{% endif %}</span>
+              <span class="or-row-ctx">{{ ctx_label(m.context) }}</span>
+              {% if m.free %}<span class="or-row-in or-free">Free</span><span class="or-row-out"></span>{% else %}<span class="or-row-in">{{ usd_m(m.input) }}</span><span class="or-row-out">{{ usd_m(m.output) }}</span>{% endif %}
               <button type="button" class="or-prov-btn" data-or-providers aria-expanded="false">
                 <span data-or-pin-label>{% if m.pinned %}{{ m.pinned }} pinned{% else %}Providers{% endif %}</span>
               </button>
@@ -86,49 +139,35 @@
           </li>
           {% endfor %}
         </ul>
-        <p class="or-empty" data-or-empty hidden>No models match.</p>
-        <p class="or-foot">Prices are OpenRouter's lead list price per million tokens. Open <b>Providers</b> to see each provider's own price and pin the ones you trust.</p>
-      </section>
-      <template data-or-drawer-tpl>
-        <div class="or-drawer" data-or-drawer>
-          <p class="or-drawer-title" data-or-drawer-title></p>
-          <p class="or-drawer-note" data-or-drawer-note>Loading providers…</p>
+      </div>
+      <p class="or-empty" data-or-empty hidden>No models match.</p>
+      <p class="or-foot">Prices are OpenRouter's lead list price per million tokens. Open <b>Providers</b> to see each provider's own price and precision, and pin the ones you trust.</p>
+    </section>
+    <template data-or-drawer-tpl>
+      <div class="or-drawer" data-or-drawer>
+        <p class="or-drawer-title" data-or-drawer-title></p>
+        <p class="or-drawer-note" data-or-drawer-note>Loading providers…</p>
+        <div class="or-prov-scroll">
           <table class="or-prov" hidden>
-            <thead><tr><th scope="col"><span class="visually-hidden">Allow</span></th><th scope="col">Provider</th><th scope="col" class="num">Input $/M</th><th scope="col" class="num">Output $/M</th><th scope="col" class="num">Cache $/M</th><th scope="col" class="num">Context</th><th scope="col" class="num">Uptime 30d</th></tr></thead>
+            <thead><tr><th scope="col"><span class="visually-hidden">Allow</span></th><th scope="col">Provider</th><th scope="col">Precision</th><th scope="col" class="num">Input $/M</th><th scope="col" class="num">Output $/M</th><th scope="col" class="num">Cache $/M</th><th scope="col" class="num">Context</th><th scope="col" class="num">Uptime</th></tr></thead>
             <tbody></tbody>
           </table>
-          <div class="or-drawer-actions" hidden>
-            <button type="button" class="btn sm" data-or-save>Save</button>
-            <button type="button" class="btn sm ghost" data-or-any>Use any provider</button>
-            <span class="or-drawer-hint" data-or-hint></span>
-          </div>
         </div>
-      </template>
-      {% if a.key_info and a.key_info.last_error %}
-      <p class="callout fault">{{ a.key_info.last_error }}</p>
-      {% endif %}
-    </article>
-    <details class="panel or-replace">
-      <summary>Replace key</summary>
-      <p class="usage-note">From openrouter.ai/settings/keys. Other users cannot use it.</p>
-      <form method="post" action="/sources/openrouter/add" class="stack">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label>API key
-          <input name="api_key" type="password" autocomplete="off" required placeholder="sk-or-v1-…">
-        </label>
-        <label>Label (optional)
-          <input name="label" maxlength="80" placeholder="OpenRouter key">
-        </label>
-        <button type="submit" class="btn">Replace my key</button>
-      </form>
-    </details>
+        <div class="or-drawer-actions" hidden>
+          <button type="button" class="btn sm" data-or-save>Save</button>
+          <button type="button" class="btn sm ghost" data-or-any>Use any provider</button>
+          <span class="or-drawer-hint" data-or-hint></span>
+        </div>
+      </div>
+    </template>
+    </div>
     {% else %}
     <article class="panel">
       <div class="section-heading">
         <h2>Add your key</h2>
         <span class="usage-sub">personal · not a pool</span>
       </div>
-      <p class="usage-note">From openrouter.ai/settings/keys. Other users cannot use it.</p>
+      <p class="usage-note">From openrouter.ai/settings/keys. Other users cannot use it. Then choose models, pin providers and set a precision floor here.</p>
       <form method="post" action="/sources/openrouter/add" class="stack">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>API key

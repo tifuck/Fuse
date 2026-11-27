@@ -8,52 +8,56 @@
       {% endif %}
       {{ pool_accounts(nanogpt_accounts, 'NanoGPT', '/sources/nanogpt', 'Remove this NanoGPT account from Fuse? Also delete its OAuth: Fuse key on nano-gpt.com/api to revoke it there.', 'Optional — NanoGPT subscription models are already unlocked. Sign in to add your own account.' if nanogpt_ok and nanogpt_reason == 'open' else 'Sign in with NanoGPT to use its models. No API key to copy.', nanogpt_ui) }}
       {% if nanogpt_models %}
-      <article class="panel source-card" data-or-scope>
-        <div class="section-heading">
-          <h2>Your NanoGPT models</h2>
-          <span class="usage-sub">your picker only · <a href="/models">Models</a></span>
+      {% set cols = 'full' if nanogpt_owner else 'noprov' %}
+      <div class="or-manage" data-or-scope>
+      <section class="or-models or-cols-{{ cols }}" data-or-models data-endpoint="/sources/nanogpt" data-prefs="/sources/models/nanogpt" data-label="NanoGPT" aria-labelledby="nano-models-title">
+        <div class="or-models-head">
+          <h3 class="or-section-title" id="nano-models-title">Models <span>your picker only</span></h3>
+          <span class="or-count" data-or-count aria-live="polite"></span>
         </div>
-        <div class="or-settings" data-or-settings>
-          <fieldset class="or-group">
-            <legend>Models</legend>
-            {% for g in nanogpt_groups %}
-            {% if g.id == 'subscription' or nanogpt_owner %}
-            <label class="or-switch">
-              <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
-              <span><b>{% if g.id == 'subscription' %}Subscription models{% else %}Every paid model{% endif %}</b><small>{% if g.id == 'subscription' %}Models NanoGPT's subscription includes. Shared accounts can serve these too.{% else %}Paid models bill your NanoGPT balance.{% endif %} Single models below stay editable.</small></span>
-            </label>
+        <div class="or-groups">
+          {% for g in nanogpt_groups %}
+          {% if g.id == 'subscription' or nanogpt_owner %}
+          <label class="or-switch">
+            <input type="checkbox" role="switch" data-ml-group="{{ g.id }}"{% if g.on %} checked{% endif %}>
+            <span><b>{% if g.id == 'subscription' %}Models in the plan{% else %}Every pay-as-you-go model{% endif %}</b><small>{% if g.id == 'subscription' %}Covered by the NanoGPT subscription; shared accounts can serve these too.{% else %}Not in the plan: each request bills your NanoGPT balance.{% endif %} Single models below stay editable.</small></span>
+          </label>
+          {% endif %}
+          {% endfor %}
+        </div>
+        <div class="or-toolbar">
+          <input type="search" data-or-filter placeholder="Search models, e.g. glm, deepseek, anthropic/" aria-label="Search NanoGPT models">
+          <div class="or-seg" role="group" aria-label="Show">
+            <button type="button" class="on" data-or-view="all" aria-pressed="true">All</button>
+            <button type="button" data-or-view="on" aria-pressed="false">On</button>
+            <button type="button" data-or-view="off" aria-pressed="false">Off</button>
+            <button type="button" data-or-view="free" aria-pressed="false">In plan</button>
+            {% if nanogpt_owner %}
+            <button type="button" data-or-view="paid" aria-pressed="false">Pay as you go</button>
+            <button type="button" data-or-view="pinned" aria-pressed="false">Pinned</button>
             {% endif %}
-            {% endfor %}
-          </fieldset>
-        </div>
-        <section class="or-models" data-or-models data-endpoint="/sources/nanogpt" data-prefs="/sources/models/nanogpt" data-label="NanoGPT">
-          <div class="or-toolbar">
-            <input type="search" data-or-filter placeholder="Search models, e.g. glm, deepseek, anthropic/" aria-label="Search NanoGPT models">
-            <div class="or-seg" role="group" aria-label="Show">
-              <button type="button" class="on" data-or-view="all" aria-pressed="true">All</button>
-              <button type="button" data-or-view="on" aria-pressed="false">On</button>
-              <button type="button" data-or-view="off" aria-pressed="false">Off</button>
-              {% if nanogpt_owner %}<button type="button" data-or-view="pinned" aria-pressed="false">Pinned</button>{% endif %}
-              <button type="button" data-or-view="free" aria-pressed="false">Subscription</button>
-            </div>
-            <div class="or-bulk" role="group" aria-label="Every model">
-              <button type="button" class="btn sm ghost" data-ml-all="1">All on</button>
-              <button type="button" class="btn sm ghost" data-ml-all="0">All off</button>
-            </div>
-            <span class="or-count" data-or-count aria-live="polite"></span>
           </div>
+          <div class="or-bulk" role="group" aria-label="Every model">
+            <button type="button" class="btn sm ghost" data-ml-all="1">All on</button>
+            <button type="button" class="btn sm ghost" data-ml-all="0">All off</button>
+          </div>
+        </div>
+        <div class="or-scroll">
+          <div class="or-head" aria-hidden="true"><span></span><span>Model</span><span class="or-h-ctx">Context</span><span>Input /M</span><span>Output /M</span>{% if nanogpt_owner %}<span>Providers</span>{% endif %}</div>
           <ul class="or-list" data-or-list>
             {% for m in nanogpt_models %}
-            <li class="or-row{% if m.enabled %} is-on{% endif %}" data-or-row data-id="{{ m.id }}" data-model="{{ m.model }}" data-group="{{ m.group }}" data-free="{{ '1' if m.free else '0' }}" data-pinned="{{ m.pinned }}">
+            <li class="or-row{% if m.enabled %} is-on{% endif %}{% if m.free %} is-covered{% endif %}" data-or-row data-id="{{ m.id }}" data-model="{{ m.model }}" data-group="{{ m.group }}" data-free="{{ '1' if m.free else '0' }}" data-pinned="{{ m.pinned }}">
               <div class="or-row-main">
                 <label class="or-toggle" title="Show in my model picker">
                   <input type="checkbox" role="switch" data-or-model {% if m.enabled %}checked{% endif %} aria-label="Enable {{ m.name }}">
                 </label>
                 <div class="or-row-title">
                   <span class="or-row-name">{{ m.name }}</span>
-                  <code class="or-row-id">{{ m.id }}</code>
+                  <span class="or-row-sub"><code class="or-row-id">{{ m.id }}</code>{% if m.free %}<span class="or-plan">In plan</span>{% else %}<span class="or-paygo">Pay as you go</span>{% endif %}</span>
                 </div>
-                <span class="or-row-price">{% if m.free %}<span class="or-free">Subscription</span>{% endif %}{% if m.input is not none and m.output is not none %}<span>${{ '%g'|format(m.input) }}<i>in/M</i></span><span>${{ '%g'|format(m.output) }}<i>out/M</i></span>{% endif %}</span>
+                <span class="or-row-ctx">{{ ctx_label(m.context) }}</span>
+                <span class="or-row-in"{% if m.free %} title="Pay-as-you-go price; the plan covers this model"{% endif %}>{{ usd_m(m.input) }}</span>
+                <span class="or-row-out"{% if m.free %} title="Pay-as-you-go price; the plan covers this model"{% endif %}>{{ usd_m(m.output) }}</span>
                 {% if nanogpt_owner %}
                 <button type="button" class="or-prov-btn" data-or-providers aria-expanded="false">
                   <span data-or-pin-label>{% if m.pinned %}{{ m.pinned }} pinned{% else %}Providers{% endif %}</span>
@@ -63,23 +67,26 @@
             </li>
             {% endfor %}
           </ul>
-          <p class="or-empty" data-or-empty hidden>No models match.</p>
-          <p class="or-foot">Prices are NanoGPT's list price per million tokens. Pinning providers makes that model pay-as-you-go at the provider's price plus NanoGPT's selection fee, even when your subscription covers it.</p>
-        </section>
-        <template data-or-drawer-tpl>
-          <div class="or-drawer" data-or-drawer>
-            <p class="or-drawer-title" data-or-drawer-title></p>
-            <p class="or-drawer-note" data-or-drawer-note>Loading providers…</p>
+        </div>
+        <p class="or-empty" data-or-empty hidden>No models match.</p>
+        <p class="or-foot">Prices are NanoGPT's pay-as-you-go list price per million tokens. <b>In plan</b> models cost nothing extra while the subscription has room, so their price shows dimmed. Pinning providers makes a model pay-as-you-go at the provider's price plus NanoGPT's selection fee, even when the plan covers it.</p>
+      </section>
+      <template data-or-drawer-tpl>
+        <div class="or-drawer" data-or-drawer>
+          <p class="or-drawer-title" data-or-drawer-title></p>
+          <p class="or-drawer-note" data-or-drawer-note>Loading providers…</p>
+          <div class="or-prov-scroll">
             <table class="or-prov" hidden>
-              <thead><tr><th scope="col"><span class="visually-hidden">Allow</span></th><th scope="col">Provider</th><th scope="col" class="num">Input $/M</th><th scope="col" class="num">Output $/M</th><th scope="col" class="num">Cache $/M</th><th scope="col" class="num">Context</th><th scope="col" class="num">Uptime</th></tr></thead>
+              <thead><tr><th scope="col"><span class="visually-hidden">Allow</span></th><th scope="col">Provider</th><th scope="col">Precision</th><th scope="col" class="num">Input $/M</th><th scope="col" class="num">Output $/M</th><th scope="col" class="num">Cache $/M</th><th scope="col" class="num">Context</th><th scope="col" class="num">Uptime</th></tr></thead>
               <tbody></tbody>
             </table>
-            <div class="or-drawer-actions" hidden>
-              <button type="button" class="btn sm" data-or-save>Save</button>
-              <button type="button" class="btn sm ghost" data-or-any>Use any provider</button>
-              <span class="or-drawer-hint" data-or-hint></span>
-            </div>
           </div>
-        </template>
-      </article>
+          <div class="or-drawer-actions" hidden>
+            <button type="button" class="btn sm" data-or-save>Save</button>
+            <button type="button" class="btn sm ghost" data-or-any>Use any provider</button>
+            <span class="or-drawer-hint" data-or-hint></span>
+          </div>
+        </div>
+      </template>
+      </div>
       {% endif %}
