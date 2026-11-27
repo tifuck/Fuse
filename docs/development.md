@@ -155,21 +155,56 @@ also gives each worker its own empty network namespace and uid 65534; without
 root the worker keeps the server's uid. `CODE_MODE=false`, or a missing
 `mini-racer`, turns it off.
 
+Calls of one step that change a host (write_file, search_replace,
+run_terminal_command, monitor, kill_command, run_code) run in order per host,
+and once one fails (status error, a non-zero exit, a foreground command that
+moved to the background) the later ones on that host do not run: the step
+gate in `tool_runner.worker`. They come back with status error, kind
+`not_run` and a text starting `[Fuse] Not run:` that names the first failing
+call; they are not logged as tool failures and do not count for the stall
+guard. Reads and non-host tools still run. run_code names no host, so a failed
+run stops later changes on every host and any earlier failure stops a later
+run. A user stop is not a skip (`tool_jobs._interrupted`). So dependent calls
+(edit, test, commit) can go in one step. Inside a snippet the same is
+`sh(command, options)`: it returns the output and throws unless the command
+exits 0, which ends the run with kind `command_failed` (a command that failed,
+not broken code: the failure log keeps that kind, and `code_error`, whatever
+the output says); its result shows the output and the calls that finished,
+with exit codes. A run cut off mid-way lists its finished commands with their
+exit codes too.
+
 When to write a snippet and when to call a tool directly is stated once, in
 the Code mode section of the coding prompt (`chat_prompts._code_mode`): a
 snippet when the next calls are already known or only part of a result is
-wanted, a direct call when a result must be read before the next step. Two
-tips in `chat_generation/tool_jobs.py` correct a turn that drifts either way,
-on its next tool result: `wrap_tip` from the first run_code call that only
-passed one call through (one is enough for a model to copy; repeated, three
-times a turn at most), and `add_code_tip` after three steps that were a lone
-file call. Both are orders that name one action; advice and two-way choices
-changed little when measured. Measure any change to this wording with the
-tool-choice eval before and after (`./venv/bin/python -m scripts.qa.tool_choice`,
-`--app <worktree>` for a checkout that is not merged yet): it sends the prompt
-and schemas to the dev model and classifies the calls it answers with, running
-nothing. What real chats did is `scripts/qa/run_code_usage.py`: read-only
-counts per model for a date window, to compare before and after a release.
+wanted, a direct call when a result must be read before the next step, one
+step (direct calls or a snippet with `sh`) for calls that only need the one
+before to have worked, and a call whose result is not needed (todo_write,
+scratch, an edit) sent with the next. The Tools rules (`_BATCH`, `_BATCH_CODE`)
+state the gate, and `|| true` for a non-zero exit that is no failure. Three
+tips in `chat_generation/tool_jobs.py` correct a turn that drifts, on its next
+tool result: `wrap_tip` from the first run_code call that only passed one call
+through (one is enough for a model to copy; repeated, `WRAP_TIPS` = 10 times a
+turn at most; a wrapped `sh` is still one, without the exit-code claim, and a
+failed run leaves the count alone); `ack_tip` from the second step of a turn
+that was one call whose result the next did not need (todo_write or scratch,
+an edit or write that worked, a command that exited 0 with under 120
+characters of output; never run_code), then on each one after, `ACK_TIPS` = 10
+times at most; and `add_code_tip` after three steps that were a lone file
+call. A step gets one tip at most (`add_step_tip`): the wrap tip, then the
+acknowledgement tip, then the run_code tip, which waits for a later step when
+it loses. Calls the gate held back count for none of them. All are orders that
+name one action; advice and two-way choices changed little when measured.
+Measure any change to this wording with the tool-choice eval before and after
+(`./venv/bin/python -m scripts.qa.tool_choice`, `--app <worktree>` for a
+checkout that is not merged yet): it sends the prompt and schemas to the dev
+model and classifies the calls it answers with, running nothing. Its cases
+`chain` (edit, test, commit in the step that edits), `chain-failed` (the step
+after the tests failed and the commit was not run) and `ack-streak`/`-tip`
+(after lone steps whose result was not needed) cover the gate. What real chats
+did is `scripts/qa/run_code_usage.py`: read-only counts per model for a date
+window, to compare before and after a release; besides run_code use it counts
+the share of steps that carry one call, acknowledgement-only steps, `not_run`
+calls and `command_failed` runs.
 
 ## Secret protection
 
