@@ -64,13 +64,22 @@ def test_an_unprivileged_server_refuses_unless_the_parent_allows_it(worker_os, m
     assert code_worker._confine() is True
 
 
-def test_run_code_says_it_is_unavailable_when_the_sandbox_cannot_be_set_up(monkeypatch):
+def test_run_code_says_it_is_unavailable_and_stays_off_when_the_sandbox_cannot_be_set_up(monkeypatch):
     """The real worker, unprivileged as the suite is, without the parent's allowance."""
     monkeypatch.setattr(code_mode, "UNCONFINED", False)
+    monkeypatch.setattr(code_mode, "_no_sandbox", False)
 
     async def runner(name, args):
         raise AssertionError("no call may run")
 
-    text, trace = asyncio.run(code_mode.run(json.dumps({"code": "return 1", "description": "Return one"}), call=runner))
-    assert trace["status"] == "error"
-    assert code_worker.SANDBOX_FAILED in text
+    def run():
+        return asyncio.run(code_mode.run(json.dumps({"code": "return 1", "description": "Return one"}), call=runner))
+
+    assert code_mode.available()
+    text, trace = run()
+    assert (trace["status"], trace["kind"]) == ("error", "unavailable")
+    assert text.startswith("Error: run_code cannot run on this server") and "use the tools directly" in text
+    # No worker on this server can set it up either: the next run starts none.
+    assert not code_mode.available()
+    text, trace = run()
+    assert trace["kind"] == "unavailable" and text.startswith("run_code is not available on this server")

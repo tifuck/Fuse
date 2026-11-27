@@ -2,15 +2,16 @@
 
 argv[1] is the isolate heap limit in MB. stdin/stdout carry JSON lines: the
 parent (app/code_mode.py) sends {"code": ...}; each helper call goes out as
-{"call": n, "name": ..., "args": "<json>"} and waits for {"reply": n,
-"body": "<json>"}; the run ends with {"done": <outcome>}. The worker has no
-tools of its own: the parent runs every call as a real tool job. It starts
-with an empty environment; once V8 is loaded it leaves the network (a new
-network namespace), sets no_new_privs and gives up root, and once its
-isolate exists it may not start a process or thread, before it runs the code.
-If any of that fails, or the server is not root (no uid to drop to), it runs
-nothing and answers SANDBOX_FAILED, unless the parent set FUSE_CODE_UNCONFINED
-(app/code_mode.py UNCONFINED).
+{"call": n, "name": ..., "args": "<json>", "pending": [calls still without a
+reply]} and waits for {"reply": n, "body": "<json>"}; the run ends with
+{"done": <outcome>}, whose "kind" (memory, unavailable) only the worker
+sets. The worker has no tools of its own: the parent runs every call as a
+real tool job. It starts with an empty environment; once V8 is loaded it
+leaves the network (a new network namespace), sets no_new_privs and gives
+up root, and once its isolate exists it may not start a process or thread,
+before it runs the code. If any of that fails, or the server is not root (no
+uid to drop to), it runs nothing and answers SANDBOX_FAILED, unless the
+parent set FUSE_CODE_UNCONFINED (app/code_mode.py UNCONFINED).
 """
 from __future__ import annotations
 
@@ -57,15 +58,29 @@ globalThis.require = (name) => {
     "Read files with `const text = await read_file(\"src/app.py\")` (and list_dir, glob, grep, write_file, search_replace, " +
     "run_terminal_command, sh the same way). %FIX%");
 };
+// One JSON form for the return value and console.log, for what JSON drops or refuses.
+const __json = (k, v) => v instanceof Error ? String(v) : v instanceof Map ? Object.fromEntries(v)
+  : v instanceof Set ? [...v] : typeof v === "bigint" ? String(v) : v;
+// The returned value as text: an object holding multi-line text shows one entry
+// per line, that text raw under a --- key --- line; anything else is JSON.
+const __render = (v) => {
+  if (typeof v === "string") return v;
+  const plain = v !== null && typeof v === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(v));
+  const text = (x) => typeof x === "string" && x.includes("\n");
+  if (!plain || !Object.values(v).some(text)) return JSON.stringify(v, __json, 2);
+  return Object.entries(v).map(([k, x]) => text(x) ? `--- ${k} ---\n${x}` : `${k}: ${JSON.stringify(x, __json)}`).join("\n");
+};
 const __logs = [];
 const console = {};
 console.log = console.info = console.warn = console.error = console.debug = (...parts) => {
-  __logs.push(parts.map((p) => typeof p === "string" ? p : JSON.stringify(p)).join(" "));
+  __logs.push(parts.map((p) => p !== null && typeof p === "object" && !(p instanceof Error)
+    ? JSON.stringify(p, __json) : String(p)).join(" "));
 };
-const __tool = (name, key) => async (args, content) => {
-  if (typeof args === "string" && key) args = {[key]: args};
+const __tool = (name, key) => async (args, more) => {
+  // A string and options, merged as sh merges them: grep("TODO", {path: "src"}).
+  if (typeof args === "string" && key) args = Object.assign({[key]: args}, typeof more === "object" ? more : {});
   // write_file(path, content), the habit of every file API.
-  else if (name === "write_file" && typeof args === "string" && typeof content === "string") args = {path: args, content};
+  else if (name === "write_file" && typeof args === "string" && typeof more === "string") args = {path: args, content: more};
   const reply = JSON.parse(await __call(name, JSON.stringify(args === undefined ? {} : args)));
   if (!reply.ok) throw new Error(reply.error);
   return reply.value;
@@ -84,7 +99,7 @@ const sh = async (a, more) => {
   let line = String(typeof args === "string" ? args : args.command).split(/\s+/).join(" ").trim();
   if (line.length > 80) line = line.slice(0, 80) + "…";
   const what = r.status === "running"
-    ? `moved to the background as ${r.id} and has not finished; do not run it again (read it with get_command_output, outside run_code)`
+    ? `moved to the background as ${r.id} and has not finished; do not run it again: its result arrives later as a command result`
     : typeof r.exit_code === "number" ? `exited ${r.exit_code}` : `ended with status ${r.status} and no exit code`;
   const out = r.output || "";
   const cut = out.length > %SH_TAIL%;
@@ -100,7 +115,7 @@ const sh = async (a, more) => {
 HEAD = "(async () => {\n"
 TAIL = """
 })().then(
-  (v) => { try { const value = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+  (v) => { try { const value = __render(v);
              if (value === undefined && v !== undefined) throw new TypeError("a " + typeof v + " has no JSON form; return a string, number, array or object");
              return JSON.stringify({ok: true, undef: v === undefined, value, logs: __logs}); }
            catch (e) { return JSON.stringify({ok: false, error: "the return value is not JSON-serializable: " + e, logs: __logs}); } },
@@ -158,11 +173,11 @@ async def _main() -> None:
     resource.setrlimit(resource.RLIMIT_CPU, (CPU_SECONDS, CPU_SECONDS))
     resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
     resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
-    from py_mini_racer import JSEvalException, init_mini_racer, mini_racer
+    from py_mini_racer import JSEvalException, JSOOMException, init_mini_racer, mini_racer
 
     init_mini_racer(flags=("--single-threaded", "--jitless"))
     if not _confine():
-        _write({"done": {"ok": False, "error": SANDBOX_FAILED, "logs": ""}})
+        _write({"done": {"ok": False, "error": SANDBOX_FAILED, "logs": "", "kind": "unavailable"}})
         return
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader(limit=REPLY_LIMIT)
@@ -187,8 +202,10 @@ async def _main() -> None:
                                                      "work (for example, write the file in parts)."})
         count += 1
         fut = loop.create_future()
+        # The code sent this call before it saw these calls' results.
+        pending = sorted(waiting)
         waiting[count] = fut
-        _write({"call": count, "name": str(name), "args": args_json})
+        _write({"call": count, "name": str(name), "args": args_json, "pending": pending})
         return await fut
 
     pump = asyncio.ensure_future(replies())
@@ -206,12 +223,21 @@ async def _main() -> None:
                     await asyncio.wait({settled}, timeout=0.1)
                 if settled.done():
                     outcome = json.loads(settled.result())
+                    # The code may write any outcome, but never the worker's kind.
+                    outcome.pop("kind", None)
                 else:
                     settled.cancel()
-                    outcome = {"ok": False, "error": "JavaScript memory limit reached"}
+                    outcome = {"ok": False, "error": "JavaScript memory limit reached", "kind": "memory"}
     except JSEvalException as exc:
         # Also raised while closing an isolate that hit its memory limit.
+        if isinstance(exc, JSOOMException):
+            outcome = outcome or {"ok": False, "error": str(exc), "kind": "memory"}
         error = str(exc)
+        # V8 repeats a parse error's message after the source line and caret.
+        first, _, rest = error.partition("\n")
+        last = rest.rstrip("\n").rpartition("\n")[2]
+        if last and first.endswith(last):
+            error = error.rstrip("\n").removesuffix(last).rstrip("\n")
         # A parse error past the code's last line is in the wrapper: the
         # code left a bracket open or closed one it never opened.
         at = re.match(r"<anonymous>:(\d+): SyntaxError", error)
