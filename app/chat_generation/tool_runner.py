@@ -398,7 +398,7 @@ async def run_tools(
                 emit({"event": "tool", "id": job.event_id, "status": "progress", **fields})
 
             run_coding = bool(session.get("coding")) if session else coding
-            if job.name == "run_code" and not job.parent and run_coding and code_mode.available():
+            if job.name == "run_code" and not job.parent and run_coding:
                 text, trace = await code_mode.run(
                     arguments, call=lambda name, args: run_child(job, name, args), paused=lambda: bool(asking),
                     owner=(user_id, thread_id),

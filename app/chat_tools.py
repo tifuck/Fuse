@@ -462,10 +462,13 @@ def _openai_tools(names: list[str], *, coding: bool, extra: list[str] | None, al
         schemas.append(SCHEMAS["web_search"])
         schemas.append(SCHEMAS["read_url"])
     if coding:
-        from . import agent_catalog
+        from . import agent_catalog, code_mode
 
         seen: set[str] = set()
         for name in agent_catalog.ALWAYS_ON_CODING:
+            # Off for the rest of the process once its sandbox could not be set up.
+            if name == "run_code" and not code_mode.available():
+                continue
             item = agent_catalog.schema(name)
             if item:
                 schemas.append(item)

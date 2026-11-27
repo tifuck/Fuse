@@ -185,3 +185,19 @@ def test_the_description_states_how_long_results_are_kept_and_when_sh_needs_or_t
     sh_line = next(line for line in desc.splitlines() if line.startswith("declare function sh("))
     assert f"kept {code_mode.KEEP_S // 60} minutes" in desc
     assert "a command whose non-zero exit is no failure (grep, diff) needs `|| true`" in sh_line
+
+
+def test_once_its_sandbox_failed_run_code_is_not_offered_and_a_call_says_so(monkeypatch):
+    from app import chat_tools
+
+    def offered():
+        return [s["function"]["name"] for s in chat_tools._openai_tools(
+            [], coding=True, extra=None, allow_spawn=False, project_session=False, artifacts=False)]
+
+    assert "run_code" in offered()
+    monkeypatch.setattr(code_mode, "_no_sandbox", True)
+
+    text, trace = run_code("return 1", Runner())
+
+    assert "run_code" not in offered()
+    assert trace["kind"] == "unavailable" and "use the tools directly" in text
