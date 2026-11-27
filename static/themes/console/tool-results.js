@@ -295,21 +295,24 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       const words = CODE_CALL_WORDS[name] || ["used", name.replaceAll("_", " "), name.replaceAll("_", " ")];
       merged.set(words.join("|"), [words, (merged.get(words.join("|"))?.[1] || 0) + n]);
     }
-    const what = [...merged.values()].map(([[verb, one, many], n]) => `${verb} <b>${n}</b> ${n === 1 ? one : many}`).join(", ");
+    const what = [...merged.values()].map(([[verb, one, many], n]) => `${deps.escapeHtml(verb)} <b>${n}</b> ${deps.escapeHtml(n === 1 ? one : many)}`).join(", ");
     const noun = (n) => `${n === 1 ? "call" : "calls"}`;
     const finished = calls.filter((c) => ["done", "warning"].includes(deps.toolPresentation(c.trace, live).state)).length;
     // A failed run reads like a finished one, its calls first, with the error
     // on one line under them.
     const callsHtml = total ? `<span class="chat-console-codecount"><b>${total}</b> ${noun(total)}:</span> ${what}` : `<span class="chat-console-codecount">No calls ran</span>`;
-    const errorLine = String(deps.ccNotRun(trace) || trace.error || "run_code failed").split("\n").find((line) => line.trim()) || "run_code failed";
-    const statusHtml = failed ? `${callsHtml} <span class="chat-console-codeerr">${deps.escapeHtml(/^(Error|Not run): /.test(errorLine) ? errorLine : `Error: ${errorLine}`)}</span>`
+    const notRun = deps.ccNotRun(trace);
+    const errorLine = String(notRun || trace.error || "run_code failed").split("\n").find((line) => line.trim()) || "run_code failed";
+    // One the step gate held back never started: it says only that.
+    const statusHtml = notRun ? `<span class="chat-console-codeerr">${deps.escapeHtml(errorLine)}</span>`
+      : failed ? `${callsHtml} <span class="chat-console-codeerr">${deps.escapeHtml(/^Error: /.test(errorLine) ? errorLine : `Error: ${errorLine}`)}</span>`
       : interrupted ? `Stopped, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
       : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
       : total ? callsHtml : "No calls";
     const row = (rowKey, branch, head, body, state, tool, title = "") => {
       const open = Boolean(body) && deps.stepOpenAt(openMap, rowKey);
       const tip = title ? ` title="${deps.escapeHtml(title)}"` : "";
-      return `<div class="chat-console-codecall is-${state}" data-step="${deps.escapeHtml(rowKey)}"${tool ? ` data-tool="${tool}"` : ""}><div class="chat-step-main"><div class="chat-step-head">` +
+      return `<div class="chat-console-codecall is-${state}" data-step="${deps.escapeHtml(rowKey)}"${tool ? ` data-tool="${deps.escapeHtml(tool)}"` : ""}><div class="chat-step-main"><div class="chat-step-head">` +
         (body ? `<button type="button" class="chat-step-toggle" data-step-toggle aria-expanded="${open}"${tip}>` : `<div class="chat-step-toggle"${tip}>`) +
         `<span class="chat-console-branch" aria-hidden="true">${branch}</span>${head}${body ? "</button>" : "</div>"}</div>` +
         (body ? `<div class="chat-step-reveal${open ? " is-open" : ""}"><div class="chat-step-reveal-inner">${body}</div></div>` : "") + `</div></div>`;
@@ -350,7 +353,7 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       // A failed run's text is its error, the calls that finished before it
       // and its console output: shown, not dropped.
       const out = parts.result.trim();
-      const ret = out ? `<div class="chat-console-codepart"><span class="chat-console-dim">${failed ? "Error" : "Returned"}</span><pre class="chat-console-out is-stdout${failed ? " is-error" : ""}">${deps.escapeHtml(parts.result)}</pre></div>` : "";
+      const ret = out ? `<div class="chat-console-codepart"><span class="chat-console-dim">${failed ? "Error" : "Returned"}</span><pre class="chat-console-out is-stdout${failed ? " is-error" : ""}">${deps.escapeHtml(parts.result)}</pre>${consoleTruncationNote(trace)}</div>` : "";
       const n = parts.code.split("\n").length;
       // Like its sibling rows, the result follows the call: a one-line value
       // itself, else how long it is.
