@@ -23,6 +23,9 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
   /* The burst rows' leader: a short run of dots just before the result. */
   & .tail-note-leader { flex: 0 1 1.3rem; min-width: 0.75rem; margin: 0 0.75rem 0 auto; border-bottom: 1px dotted var(--tl-leader); transform: translateY(0.25em); }
   & .tail-note-call { flex-shrink: 100 !important; margin-right: 0.75rem !important; }
+  /* An agent row keeps room for its task: a result that does not fit beside it takes the next line, under the task. */
+  & .tail-agent-row { flex-wrap: wrap; padding-left: calc(var(--tl-g) + var(--tl-verb) + 1ch) !important; }
+  & .tail-agent-row > .tail-note-call { flex: 1 1 0 !important; min-width: calc(min(100%, 24ch) + var(--tl-verb) + 1ch); max-width: calc(100% + var(--tl-verb) + 1ch); margin-left: calc(-1 * (var(--tl-verb) + 1ch)) !important; }
   & .tail-note-result { flex: none; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mute); font-variant-numeric: tabular-nums; text-align: right; }
   & .tail-note-result .chat-console-dim { color: var(--tl-dim) !important; }
   & li.is-console-notice.is-red .tail-note-result, & .chat-console-agent.is-error .tail-note-result { color: var(--fault); }
@@ -439,12 +442,8 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
 @media (max-width: 800px) {
   html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     & .tail-note-meta { display: none; }
-    & li.is-console-notice .chat-step-head > .chat-step-open { min-height: 2rem; }
     & li.is-console-notice .chat-step-head > .chat-step-open .chat-open-target { display: none; }
-    & :is(.chat-error-continue, [data-load-earlier]) { min-height: 2.25rem; }
     & :is(.chat-console-thought, li.is-console-notice > .chat-step-main .chat-console-hang-body, .tail-agent-doing) { padding-left: var(--tl-g) !important; }
-    & :is(.chat-ask-step > button, .chat-ask-clock, .chat-ask-btn, .chat-qrow-btn, .chat-todo-dismiss, .chat-queue-hold > button, .chat-context-alert > button, .chat-skill-card .chat-perm-actions > .btn) { min-width: 2.25rem; height: 2.25rem !important; min-height: 2.25rem !important; }
-    & :is(.chat-ask-step > button, .chat-qrow-btn, .chat-todo-dismiss, .chat-ask-btn.is-caret) { width: 2.25rem !important; }
     & .chat-perm-queue, & .chat-queue:not([hidden]), & .chat-context-alert:not([hidden]) { margin: 0 0.5rem 0.5rem !important; }
     & .chat-todo-page { margin: 0 0.5rem 0.5rem !important; }
     & .chat-ask-head { flex-wrap: wrap; row-gap: 0.4rem !important; }
@@ -452,10 +451,18 @@ html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     & .chat-ask-actions { margin-left: auto !important; }
     & .chat-ask-pay { flex-wrap: wrap; }
     & .chat-ask-note { flex: 1 1 100%; max-width: none; margin: 0 0 0 2ch !important; }
+    & .chat-source-domain { width: 12ch; }
+  }
+}
+@media (max-width: 800px), (pointer: coarse) {
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+    & li.is-console-notice .chat-step-head > .chat-step-open { min-height: 2rem; }
+    & :is(.chat-error-continue, [data-load-earlier]) { min-height: 2.25rem; }
+    & :is(.chat-ask-step > button, .chat-ask-clock, .chat-ask-btn, .chat-qrow-btn, .chat-todo-dismiss, .chat-queue-hold > button, .chat-context-alert > button, .chat-skill-card .chat-perm-actions > .btn) { min-width: 2.25rem; height: 2.25rem !important; min-height: 2.25rem !important; }
+    & :is(.chat-ask-step > button, .chat-qrow-btn, .chat-todo-dismiss, .chat-ask-btn.is-caret) { width: 2.25rem !important; }
     & .chat-perm-always-menu > button, & .chat-queue-menu > .chat-queue-action { min-height: 2.25rem; }
     & .chat-user-file.is-file { min-height: 2.25rem; }
     & .chat-user-file-x { width: 2rem !important; height: 2rem !important; }
-    & .chat-source-domain { width: 12ch; }
     & .chat-skill-field input, & .chat-skill-check { min-height: 2.25rem; }
   }
 }

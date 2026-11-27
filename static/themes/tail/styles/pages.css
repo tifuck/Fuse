@@ -29,7 +29,10 @@ html[data-chat-view="tail"] body.is-settings .settings-shell .app-rail {
   border-right: 1px solid var(--line);
   font-family: var(--mono);
 }
-html[data-chat-view="tail"] body.is-settings .app-rail .chat-history-head { height: 2.25rem; min-height: 2.25rem; }
+/* A phone keeps the base head, which clears the status bar (--safe-top). */
+@media (min-width: 801px) {
+  html[data-chat-view="tail"] body.is-settings .app-rail .chat-history-head { height: 2.25rem; min-height: 2.25rem; }
+}
 html[data-chat-view="tail"] body.is-settings .settings-shell .app-rail-nav { gap: 0; padding: 0.35rem 0.5rem 0.85rem; }
 html[data-chat-view="tail"] body.is-settings .settings-shell .app-rail-label {
   margin: 0.85rem 0.6rem 0.3rem;
@@ -58,6 +61,9 @@ html[data-chat-view="tail"] body.is-settings .settings-shell .app-rail-nav a.on 
   background: linear-gradient(90deg, var(--brass) 2px, color-mix(in srgb, var(--brass) 9%, transparent) 2px);
 }
 html[data-chat-view="tail"] body.is-settings .settings-shell .app-rail-nav a:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+@media (max-width: 800px), (pointer: coarse) {
+  html[data-chat-view="tail"] body.is-settings .settings-shell .app-rail-nav a { min-height: 44px; }
+}
 
 /* —— Header line = chat header —— */
 html[data-chat-view="tail"] body.is-settings .settings-bar.chat-bar {
@@ -74,6 +80,10 @@ html[data-chat-view="tail"] body.is-settings .settings-bar .chat-bar-title {
   letter-spacing: 0.01em;
 }
 html[data-chat-view="tail"] body.is-settings .settings-bar .chat-history-toggle { height: 1.75rem; min-width: 1.75rem; padding: 0 0.35rem; border: 0; }
+/* An installed app on a notched phone draws under the status bar. */
+@media (max-width: 800px) {
+  html[data-chat-view="tail"] body.is-settings .settings-bar.chat-bar { min-height: calc(2.75rem + var(--safe-top)); padding-top: var(--safe-top); }
+}
 
 /* —— Page head: the lead and the page's actions share one row, like a sheet
    head; content runs the full width below it. —— */
@@ -144,6 +154,9 @@ html[data-chat-view="tail"] body:is(.is-settings, .is-chat) :is(.settings-shell,
 html[data-chat-view="tail"] body:is(.is-settings, .is-chat) :is(.settings-shell, dialog.modal, .fp-dialog) .btn.ghost { background: transparent; border-color: var(--line); color: var(--mist); }
 html[data-chat-view="tail"] body:is(.is-settings, .is-chat) :is(.settings-shell, dialog.modal, .fp-dialog) .btn.ghost:hover { background: color-mix(in srgb, var(--mist) 6%, transparent); border-color: color-mix(in srgb, var(--mist) 22%, transparent); }
 html[data-chat-view="tail"] body:is(.is-settings, .is-chat) :is(.settings-shell, dialog.modal, .fp-dialog) .btn.sm { height: 1.9rem; padding: 0 0.7rem; font-size: 0.78rem; }
+@media (pointer: coarse) {
+  html[data-chat-view="tail"] body:is(.is-settings, .is-chat) :is(.settings-shell, dialog.modal, .fp-dialog) .btn.sm { height: 2.5rem; }
+}
 html[data-chat-view="tail"] body:is(.is-settings, .is-chat) :is(.settings-shell, dialog.modal, .fp-dialog) :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])), select, textarea) {
   background-color: var(--raise);
   border: 1px solid var(--line);

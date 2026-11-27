@@ -173,6 +173,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Touch has no tooltip for a cut name: two lines instead of one. */
+@media (pointer: coarse) {
+  :where(html.is-chat-root[data-chat-view="tail"]) .chat-picker-row > [role="option"] > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+}
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-picker-row > [role="option"].is-selected > span { font-weight: 600; }
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-picker-image {
   display: inline-flex;
