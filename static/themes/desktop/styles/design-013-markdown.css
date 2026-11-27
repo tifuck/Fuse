@@ -118,8 +118,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
 /* Code blocks: one panel, the label and a Copy button inside it. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md .chat-code {
   border-radius: 12px;
-  & .chat-code-head { min-height: 0; padding: 0.45rem 0.4rem 0 1rem; border: 0; font-family: var(--code, var(--mono)); font-size: 12px; }
-  & .chat-code-head .chat-icon-btn { display: inline-flex; gap: 0.35em; width: auto; height: 28px; padding: 0 0.55rem; border-radius: 6px; font-family: var(--sans, inherit); font-size: 12px; }
+  & .chat-code-head { min-height: 0; padding: 0.45rem 0.4rem 0 1rem; border: 0; font-family: var(--code, var(--mono)); font-size: 0.75rem; }
+  & .chat-code-head .chat-icon-btn { display: inline-flex; gap: 0.35em; width: auto; height: 28px; padding: 0 0.55rem; border-radius: 6px; font-family: var(--sans, inherit); font-size: 0.75rem; }
   & .chat-code-head .chat-icon-btn::after { content: attr(aria-label); }
   & .chat-code-head .chat-icon-btn:hover { background: color-mix(in srgb, var(--dk-text) 8%, transparent); color: var(--dk-text); }
   & pre { padding: 0.35rem 1rem 1rem; font-size: calc(0.82rem * var(--chat-text-scale, 1)); line-height: 1.6; }

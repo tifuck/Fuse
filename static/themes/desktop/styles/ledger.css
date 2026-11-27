@@ -173,10 +173,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-call-head:last-child, & .dk-call-head:has(+ .dk-call-foot) { border-bottom: 0; }
   & .dk-call-in { flex: 1 1 auto; min-width: 0; max-height: 9.6em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   & .dk-call-pr { color: var(--dk-call-quiet); user-select: none; }
-  & .dk-call-copy { flex: none; min-height: 20px; padding: 0 5px; border: 0; border-radius: var(--dk-ctl-r); background: none; color: var(--dk-mute, var(--mute)); font: 400 11.5px/20px var(--sans); cursor: pointer; }
+  & .dk-call-copy { flex: none; min-height: 20px; padding: 0 5px; border: 0; border-radius: var(--dk-ctl-r); background: none; color: var(--dk-mute, var(--mute)); font: 400 0.71875rem/1.25rem var(--sans); cursor: pointer; }
   @media (hover: hover) { & .dk-call-copy:hover { background: var(--dk-hover); color: var(--dk-text, var(--mist)); } }
   & .dk-call-copy:focus-visible { outline: 2px solid var(--dk-link, var(--steel)); outline-offset: -2px; }
-  @media (max-width: 480px), (pointer: coarse) { & .dk-call-copy { min-height: 28px; padding: 0 8px; line-height: 28px; } }
+  @media (max-width: 480px), (pointer: coarse) { & .dk-call-copy { min-height: 28px; padding: 0 8px; line-height: 1.75rem; } }
   & .dk-call-box :is(.chat-console-out, .chat-console-lines, pre) { margin: 0; border: 0; border-radius: 0; background: none; font-size: 1em; }
   & .dk-call-box > * { margin-inline: 0 !important; }
   & .dk-call-box > :is(.chat-console-out, .chat-console-lines, pre) { max-height: min(18rem, 50vh); padding: 8px 12px; overflow: auto; }
@@ -277,7 +277,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Phones read the box at a reply code block's size, not a step under it. */
   @media (max-width: 480px) {
     & .dk-call-box { font-size: calc(0.82rem * var(--chat-text-scale, 1)); }
-    & .dk-call-copy { font-size: 12.5px; }
+    & .dk-call-copy { font-size: 0.78125rem; }
     & :is(.dk-call-foot, .dk-call-note) { font-size: calc(0.75rem * var(--chat-text-scale, 1)); }
   }
   /* A web page's text starts on its title's edge. */
@@ -287,12 +287,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Numbered and diff lines share one width, the longest line's, so a tinted
      row reaches the end of the scroll. */
   & .dk-call-box .chat-console-lines { display: grid; grid-template-columns: minmax(max-content, 1fr); }
-  & .dk-call-note { padding: 1px 12px; border-top: 1px solid var(--dk-card-line, var(--line)); color: var(--dk-mute, var(--mute)); font: calc(0.72rem * var(--chat-text-scale, 1))/18px var(--sans); white-space: pre; overflow-x: auto; scrollbar-width: none; }
+  & .dk-call-note { padding: 1px 12px; border-top: 1px solid var(--dk-card-line, var(--line)); color: var(--dk-mute, var(--mute)); font: calc(0.72rem * var(--chat-text-scale, 1))/1.125rem var(--sans); white-space: pre; overflow-x: auto; scrollbar-width: none; }
   & .dk-call-note::-webkit-scrollbar { display: none; }
   & .dk-call-head + .dk-call-note { border-top: 0; }
   & .dk-call-note.is-stop, & .dk-call-state.is-stop { color: var(--dk-warn); }
   & .dk-call-note.is-bad { color: var(--call-fail); }
-  & .dk-call-foot { align-items: center; justify-content: space-between; padding: 1px 12px; line-height: 18px; white-space: nowrap; }
+  & .dk-call-foot { align-items: center; justify-content: space-between; padding: 1px 12px; line-height: 1.125rem; white-space: nowrap; }
   & .dk-call-end { display: inline-flex; flex: none; align-items: baseline; }
   & .dk-call-state::first-letter { text-transform: uppercase; }
   & .dk-call-sep { margin: 0 5px; opacity: 0.6; }

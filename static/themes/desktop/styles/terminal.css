@@ -12,7 +12,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     position: relative; flex: none; display: flex; flex-direction: column;
     height: var(--terminal-h, 38vh); min-height: 120px;
     border-top: 1px solid var(--dk-card-line); background: var(--term-bg); color: var(--dk-text);
-    font: 12.5px/1.4 var(--sans);
+    font: 0.78125rem/1.4 var(--sans);
   }
   & .term-dock[hidden] { display: none; }
   & .term-grip { position: absolute; z-index: 3; top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; touch-action: none; }
@@ -24,12 +24,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .term-tab:hover { background: var(--dk-hover); }
   & .term-tab.is-active { background: var(--dk-sel); color: var(--dk-text); }
   & .term-tab-main { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 16rem; height: 100%; padding: 0 2px 0 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-  & .term-tab-name { font: 12px var(--code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .term-tab-name { font: 0.75rem var(--code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   & .term-tab-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
   & .term-tab[data-state="connecting"] .term-tab-dot { background: var(--status-live); }
   & .term-tab:is([data-state="exited"], [data-state="lost"]) .term-tab-dot { background: var(--mute); }
-  & .term-tab-root { padding: 0 4px; border-radius: 3px; background: color-mix(in srgb, var(--fault) 20%, transparent); color: var(--fault); font-size: 10px; line-height: 15px; }
-  & .term-tab-close { flex: none; width: 22px; height: 22px; margin-right: 4px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--dk-mute); font: 14px/1 var(--code); cursor: pointer; }
+  & .term-tab-root { padding: 0 4px; border-radius: 3px; background: color-mix(in srgb, var(--fault) 20%, transparent); color: var(--fault); font-size: 0.625rem; line-height: 0.9375rem; }
+  & .term-tab-close { flex: none; width: 22px; height: 22px; margin-right: 4px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--dk-mute); font: 0.875rem/1 var(--code); cursor: pointer; }
   & .term-tab-close:hover { background: var(--dk-hover); color: var(--dk-text); }
   & .term-gap { flex: 1; }
   & .term-btn { flex: none; display: grid; place-items: center; min-width: 28px; height: 26px; padding: 0 6px; border: 0; border-radius: 5px; background: none; color: var(--dk-mute); font: inherit; cursor: pointer; }
@@ -72,11 +72,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .term-empty-error { margin: 0 0 0 10px; color: var(--fault); }
   & .term-line { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--dk-card-line); color: var(--dk-accent); }
   & .term-line[hidden] { display: none; }
-  & .term-line input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--dk-card-line); border-radius: 4px; background: var(--dk-card); color: var(--dk-text); font: 16px var(--code); outline: 0; }
+  & .term-line input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--dk-card-line); border-radius: 4px; background: var(--dk-card); color: var(--dk-text); font: 1rem var(--code); outline: 0; }
   & .term-line input:focus { border-color: var(--dk-accent); }
   & .term-keys { display: none; }
   & .term-keys-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-  & .term-key { min-width: 0; height: 44px; padding: 0; border: 1px solid var(--dk-card-line); border-radius: 6px; background: var(--dk-card); color: var(--dk-text); font: 14px var(--code); touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  & .term-key { min-width: 0; height: 44px; padding: 0; border: 1px solid var(--dk-card-line); border-radius: 6px; background: var(--dk-card); color: var(--dk-text); font: 0.875rem var(--code); touch-action: manipulation; -webkit-user-select: none; user-select: none; }
   & .term-key:active { background: var(--dk-hover); }
   & .term-key[data-term-state="once"] { border-color: var(--dk-accent); color: var(--dk-accent); }
   & .term-key[data-term-state="lock"] { border-color: var(--dk-accent); background: var(--dk-accent); color: var(--on-brass, var(--ink)); }
@@ -105,7 +105,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .term-tab-main { padding-left: 12px; }
     & .term-tab-close { width: 40px; height: 44px; margin: 0; }
     & .term-btn { min-width: 40px; height: 44px; padding: 0 4px; }
-    & .term-find input { height: 36px; font-size: 16px; }
+    & .term-find input { height: 36px; font-size: 1rem; }
     & .term-menu { position: fixed; top: auto; bottom: calc(var(--safe-bottom) + 8px); left: 8px; right: 8px; min-width: 0; max-height: 60dvh; }
     & .term-choice { min-height: 48px; align-items: center; }
   }
