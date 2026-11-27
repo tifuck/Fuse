@@ -234,7 +234,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-foo
     margin-top: 0.15rem;
   }
 
-  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-box textarea { font-size: 16px; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-box textarea { font-size: 1rem; }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-model { max-width: none; margin-left: 0.45rem; }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] :is(.chat-search-btn, .chat-perm-host, .chat-context-wrap, .chat-stash-btn, .chat-mic-btn, .chat-send) { margin-left: 0.15rem; }
 

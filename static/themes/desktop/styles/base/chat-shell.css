@@ -35,6 +35,7 @@ html:where(.is-chat-root[data-chat-view="desktop"]).is-chat-root,
   min-height: 0;
   height: auto;
   overflow: hidden;
+  overflow: clip;
 }
 :where(html.is-chat-root[data-chat-view="desktop"]) body.is-chat .stage-inner {
   max-width: none;

@@ -619,4 +619,5 @@ details.catalog-family[hidden] { display: none !important; }
   .catalog-find input { font-size: 16px; }
   .catalog-sum { order: 3; margin-left: 0; }
   html[data-chat-view] body.is-settings .settings-shell .catalog-family .section-heading { flex-direction: row; align-items: center; }
+  html[data-chat-view] body.is-settings .settings-shell .catalog-family .section-heading h2 { min-width: 0; overflow-wrap: anywhere; }
 }

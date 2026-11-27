@@ -40,6 +40,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
   line-height: 1.7;
   overflow-wrap: break-word;
   & p { margin: 0 0 0.9em; }
+  /* The column stays wide for code, tables and artifacts; prose keeps a reading measure. */
+  & > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6, .chat-md-alert) { max-inline-size: 80ch; }
   /* A line that introduces a list stays close to it. */
   & p:has(+ :is(ul, ol)) { margin-bottom: 0; }
   & strong { color: var(--dk-text); font-weight: 600; }
@@ -56,7 +58,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
   /* Links underlined softly; sources as pills; artifact links as a chip. */
   & a { color: var(--dk-link); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--dk-link) 40%, transparent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
   & a:hover { text-decoration-color: var(--dk-link); }
-  & a.chat-md-cite { display: inline-block; margin: 0 0.1em; padding: 0.05em 0.55em; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--dk-text) 9%, transparent); color: var(--dk-mute); font-size: 0.74em; font-weight: 500; line-height: 1.6; text-decoration: none; vertical-align: 0.12em; }
+  /* One line: a bare link's chip ellipsizes (the href holds the whole URL). */
+  & a.chat-md-cite { display: inline-block; max-width: 100%; margin: 0 0.1em; padding: 0.05em 0.55em; overflow: hidden; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--dk-text) 9%, transparent); color: var(--dk-mute); font-size: 0.74em; font-weight: 500; line-height: 1.6; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
   & a.chat-md-cite:hover { background: color-mix(in srgb, var(--dk-text) 15%, transparent); color: var(--dk-text); }
   & a.chat-md-artifact { display: inline-flex; align-items: center; gap: 0.35em; max-width: 100%; padding: 0.02em 0.5em 0.02em 0.4em; border: 1px solid color-mix(in srgb, var(--dk-link) 25%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--dk-link) 10%, transparent); color: var(--dk-link); line-height: 1.5; text-decoration: none; }
   & a.chat-md-artifact::before { content: ""; flex: none; width: 0.95em; height: 0.95em; background: currentColor; -webkit-mask: var(--md-i-doc) center / contain no-repeat; mask: var(--md-i-doc) center / contain no-repeat; }
@@ -80,6 +83,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
   & .chat-md-table { margin: 0.75rem 0; overflow-x: auto; border: 1px solid var(--dk-card-line, var(--line)); border-radius: 10px; }
   & .chat-md-table table { display: table; width: 100%; max-width: none; margin: 0; border-collapse: separate; border-spacing: 0; font-size: 0.93em; }
   & .chat-md-table :is(th, td) { padding: 0.55em 0.9em; border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line, var(--line)) 75%, transparent); }
+  & .chat-md-table :is(th, td) { min-width: 10ch; }
   & .chat-md-table tr:last-child td { border-bottom: 0; }
   & .chat-md-table th { border-bottom-color: var(--dk-card-line, var(--line)); background: color-mix(in srgb, var(--dk-text) 4%, transparent); color: var(--dk-text); font-size: 0.86em; font-weight: 600; white-space: nowrap; }
   & .chat-md-table tbody tr:hover td { background: color-mix(in srgb, var(--dk-text) 3%, transparent); }
@@ -114,8 +118,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md 
 /* Code blocks: one panel, the label and a Copy button inside it. */
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-md .chat-code {
   border-radius: 12px;
-  & .chat-code-head { min-height: 0; padding: 0.45rem 0.4rem 0 1rem; border: 0; font-family: var(--code, var(--mono)); font-size: 12px; }
-  & .chat-code-head .chat-icon-btn { display: inline-flex; gap: 0.35em; width: auto; height: 28px; padding: 0 0.55rem; border-radius: 6px; font-family: var(--sans, inherit); font-size: 12px; }
+  & .chat-code-head { min-height: 0; padding: 0.45rem 0.4rem 0 1rem; border: 0; font-family: var(--code, var(--mono)); font-size: 0.75rem; }
+  & .chat-code-head .chat-icon-btn { display: inline-flex; gap: 0.35em; width: auto; height: 28px; padding: 0 0.55rem; border-radius: 6px; font-family: var(--sans, inherit); font-size: 0.75rem; }
   & .chat-code-head .chat-icon-btn::after { content: attr(aria-label); }
   & .chat-code-head .chat-icon-btn:hover { background: color-mix(in srgb, var(--dk-text) 8%, transparent); color: var(--dk-text); }
   & pre { padding: 0.35rem 1rem 1rem; font-size: calc(0.82rem * var(--chat-text-scale, 1)); line-height: 1.6; }

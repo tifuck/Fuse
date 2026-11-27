@@ -265,6 +265,8 @@
   font-size: calc(0.64rem * var(--chat-text-scale, 1));
   color: var(--mute);
 }
+/* A flex row cannot ellipsize its text, so the turn line's text wraps. */
+:where(html.is-chat-root[data-chat-view="tail"]) .chat-foot-meta .chat-console-turn > span:not(.chat-console-turn-mark, .tail-receipt, .chat-console-turn-peak) { white-space: normal; }
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-foot-dot { opacity: 0.55; }
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-step-toggle,
 :where(html.is-chat-root[data-chat-view="tail"]) .chat-step-static {

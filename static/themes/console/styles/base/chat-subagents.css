@@ -130,7 +130,7 @@
   white-space: nowrap;
 }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-jobs-meta { flex: 0 1 auto; margin-left: auto; }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-agents-state { flex-shrink: 0; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-agents-state { flex: 0 1 auto; min-width: 0; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-agents-doing,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-agents-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The model column: provider slug and model name, clipped so a long one

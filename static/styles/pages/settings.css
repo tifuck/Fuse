@@ -257,7 +257,9 @@ html body.is-settings .settings-shell .set-secret-field input[type="text"]:disab
 .set-secret-model { margin: 0.35rem 0 0; overflow: hidden; color: var(--mute); font-size: 0.76rem; line-height: 1.4; white-space: nowrap; text-overflow: ellipsis; }
 .set-secret-name code, .set-secret-model code { padding: 0; border: 0; background: none; color: inherit; font-family: var(--mono); font-size: inherit; }
 .set-secret-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; min-width: 0; min-height: 2.25rem; }
-@media (max-width: 720px) {
+/* Three tracks need the page box, not the viewport: beside the rail it is
+   far narrower than the window. */
+@container page (max-width: 56rem) {
   .set-secret { grid-template-columns: minmax(0, 1fr); padding-left: 0.9rem; padding-right: 0.9rem; }
   .set-secret-name { padding-top: 0; }
   .set-secret-eye { width: 2.75rem; }
@@ -287,7 +289,7 @@ html body.is-settings .settings-shell .set-secret-field input[type="text"]:disab
   text-transform: uppercase;
 }
 :where(html:not(.is-chat-root)) [aria-pressed="true"] + .set-state { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
-@media (max-width: 720px) {
+@container page (max-width: 40rem) {
   .set-row { grid-template-columns: minmax(0, 1fr); }
   .set-head, .set-row, .set-foot { padding-left: 0.9rem; padding-right: 0.9rem; }
   :where(html:not(.is-chat-root)) .set .table-wrap { margin: 0 0.9rem 0.9rem; }
@@ -330,7 +332,7 @@ html[data-chat-console="true"] body.is-settings .set-appearance .ap-range::-moz-
 .pool-matrix { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .pool-matrix th, .pool-matrix td { padding: 0.55rem 1.1rem; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
 .pool-matrix thead th { padding-top: 0.5rem; padding-bottom: 0.5rem; color: var(--mute); font: 500 0.62rem/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; background: color-mix(in srgb, var(--ink) 55%, var(--panel)); }
-.pool-matrix tbody th { font-weight: 500; color: var(--mist); }
+.pool-matrix tbody th { font-weight: 500; color: var(--mist); overflow-wrap: anywhere; }
 :where(html:not(.is-chat-root)) .pool-matrix td.num { color: var(--mute); font-variant-numeric: tabular-nums; }
 .pool-matrix :is(th, td):nth-child(n+2) { width: 8rem; }
 .pool-matrix tbody tr:hover { background: color-mix(in srgb, var(--mist) 3%, transparent); }

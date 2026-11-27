@@ -247,7 +247,7 @@
   border-radius: 10px;
 }
 .agent-prompt-copy h3 { margin: 0.7rem 0 0.35rem; color: var(--mist); font-size: 0.95rem; }
-.agent-prompt-copy p { margin: 0; color: var(--mute); font-size: 0.78rem; }
+.agent-prompt-copy p { margin: 0; color: var(--mute); font-size: 0.78rem; overflow-wrap: anywhere; }
 .agent-prompt-box {
   position: relative;
   min-width: 0;
@@ -275,6 +275,7 @@
   font-size: 0.68rem;
   line-height: 1.65;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .agent-prompt-box .prompt-copy {
   position: absolute;

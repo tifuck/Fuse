@@ -176,7 +176,9 @@ export function createInput(ctx) {
       const vvOffset = vv && !zoomed ? Math.max(0, vv.offsetTop) : 0;
       const composerFocus = S.form.contains(document.activeElement) &&
         document.activeElement.matches("textarea, input, [contenteditable='true']");
-      const mobile = window.matchMedia("(max-width: 800px)").matches;
+      // A touch tablet is wider than a phone but its keyboard covers the app the
+      // same way (iOS ignores interactive-widget=resizes-content).
+      const mobile = window.matchMedia("(max-width: 800px), (pointer: coarse)").matches;
       // A terminal sizes itself to what the keyboard leaves, like a sheet.
       const terminalFocus = document.activeElement instanceof Element &&
         Boolean(document.activeElement.closest("[data-terminal]"));

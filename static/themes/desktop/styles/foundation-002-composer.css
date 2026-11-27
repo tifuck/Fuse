@@ -54,7 +54,7 @@
 }
 
 @media (max-width: 800px) {
-  .chat[data-view="desktop"] .chat-box textarea { font-size: 16px; }
+  .chat[data-view="desktop"] .chat-box textarea { font-size: 1rem; }
 }
 
 @media (max-width: 800px) {

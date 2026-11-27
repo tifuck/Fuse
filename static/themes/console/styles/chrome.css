@@ -22,6 +22,9 @@ html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.user-dock-label
 html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.chat-pop button, .user-dock-nav a, .user-dock-out button, .chat-picker-row > [role="option"], .chat-slash-item, .chat-slash-item :is(kbd, span)) { font-size: var(--con-menu); }
 html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.chat-pop button, .user-dock-nav a, .user-dock-out button, .chat-picker-row > [role="option"], .chat-slash-item) { height: auto; min-height: var(--con-menu-row); padding-block: 0; }
 html[data-chat-console="true"] body.is-chat.is-chat.is-chat .chat-slash-item { align-items: center; }
+@media (pointer: coarse) {
+  html[data-chat-console="true"] body.is-chat.is-chat.is-chat .chat-picker-row > [role="option"] { min-height: 2.75rem; }
+}
 html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.chat-context-tab, .chat-context-pop-foot .btn, .chat-sheet .btn.sm) { font-size: var(--con-menu); }
 html[data-chat-console="true"] body.is-chat.is-chat.is-chat :is(.ap-note, .chat-context-desc, .chat-sheet .skills-desc, .chat-sheet-note) { font-size: var(--con-note); }
 html[data-chat-console="true"] body.is-chat.is-chat.is-chat .chat-view-sheet-close { color: color-mix(in srgb, var(--mist) 76%, var(--mute)); }

@@ -275,6 +275,22 @@ html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-foo
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-picker-btn .provider-logo { display: block; flex: none; width: 1rem; height: 1rem; opacity: 0.7; }
 }
 
+@media (pointer: coarse) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box { --composer-row: 2.5rem; }
+  @container composer (max-width: 22.5rem) {
+    html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box { --composer-row: 2.25rem; }
+  }
+}
+
+/* A narrow phone with the plan meter: the meter keeps only its bars and the
+   model its name, so the name is not cut to a few letters. */
+@container composer (max-width: 25rem) {
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-pool { margin-left: 0.3rem; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-pool-meter { grid-template-columns: auto; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box .chat-pool-row:not(.is-balance) > :is(em, b) { display: none; }
+  html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-box:has(.chat-pool:not([hidden])) .chat-picker-btn .provider-logo { display: none; }
+}
+
 @media (max-width: 800px) {
   html[data-chat-console="true"] body.is-chat .chat[data-view="console"] .chat-md {
     font-size: calc(0.78rem * var(--chat-text-scale, 1));
