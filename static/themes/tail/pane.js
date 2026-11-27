@@ -35,6 +35,18 @@ export function create(deps) {
     deps.saveDisclosures(owner);
   }
 
+  // A finished call's line counts, worked out once (the diff may be parsed
+  // for them); kept with what they were read from, as calls change in place.
+  const editCounts = new WeakMap();
+  function countsFor(trace) {
+    const from = [trace.added, trace.lines_added, trace.removed, trace.lines_removed, trace.preview?.length, trace.output?.length, trace.content?.length].join();
+    const kept = editCounts.get(trace);
+    if (kept?.from === from) return kept.counts;
+    const counts = deps.consoleEditCounts(trace);
+    editCounts.set(trace, { from, counts });
+    return counts;
+  }
+
   // Every file the chat's finished edits and writes touched, newest first,
   // with the lines they added and removed and the call to open for it.
   function changedFiles() {
@@ -45,7 +57,7 @@ export function create(deps) {
         if (!trace || !CHANGE_TOOLS.has(trace.name) || !trace.path) return;
         const state = deps.toolPresentation(trace, false);
         if (state.failed || state.interrupted || state.running) return;
-        const counts = deps.consoleEditCounts(trace);
+        const counts = countsFor(trace);
         const file = files.get(trace.path) || { path: String(trace.path), added: 0, removed: 0, edits: 0 };
         file.added += counts.added;
         file.removed += counts.removed;
@@ -189,7 +201,8 @@ export function create(deps) {
     const open = paneCalls().length;
     if (!shown() && open) show("output", true);
     else if (shown() === "output" && byCall && !open) hide();
-    if (shown()) renderChanges();
+    // The list is drawn only where it shows; opening its tab draws it (show).
+    if (shown() === "changes") renderChanges();
     syncAgents();
   }
   const later = () => { if (!queued) { queued = true; requestAnimationFrame(sync); } };

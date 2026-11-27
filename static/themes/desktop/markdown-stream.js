@@ -131,7 +131,6 @@ function revealTick(md) {
     if (document.hidden || dt > 400 || deps.reduceMotion.matches) {
       md._src = md._revealSrc;
       revealNow(md, text, md._revealWriting, catalog);
-      if (deps.stickToBottom) deps.snapThread();
       return;
     }
     const backlog = text.length - md._revealShown;
@@ -147,7 +146,6 @@ function revealTick(md) {
       const saved = md._revealPre[i];
       if (saved && (saved[0] || saved[1])) { el.scrollLeft = saved[0]; el.scrollTop = saved[1]; }
     });
-    if (deps.stickToBottom) deps.snapThread();
     if (!done) md._revealRaf = requestAnimationFrame(() => revealTick(md));
   }
 
