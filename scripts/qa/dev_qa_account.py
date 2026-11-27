@@ -54,6 +54,8 @@ _ids = count(1)
 
 def tool(name: str, **fields) -> dict:
     row = {"id": f"qa{next(_ids)}", "name": name, "status": "done", "host": HOST, "project_root": PROJECT}
+    if name == "run_code":
+        del row["host"]  # its calls name their hosts; the run itself has none
     row.update(fields)
     return row
 
@@ -681,7 +683,7 @@ def code_thread() -> list[dict]:
         tool("run_terminal_command", parent=sh_failed["id"], command="npm test", cwd=PROJECT, exit_code=1,
              execution_duration_ms=2100, output=sh_out),
     ]
-    bare = tool("run_code", duration_ms=140, output=" M app/net.py\n?? tests/test_net.py\n[Fuse: 1 calls: run_terminal_command×1]",
+    bare = tool("run_code", duration_ms=140, output=" M app/net.py\n?? tests/test_net.py\n[Fuse: 1 call: run_terminal_command×1]",
                 code='return (await run_terminal_command("git status --short")).output;')
     bare_calls = [tool("run_terminal_command", parent=bare["id"], command="git status --short", cwd=PROJECT, exit_code=0,
                        execution_duration_ms=60, output=" M app/net.py\n?? tests/test_net.py")]
