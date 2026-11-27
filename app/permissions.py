@@ -1562,8 +1562,13 @@ async def _ask_and_wait(gate: Gate, payload: dict, auto_judge=None) -> str:
             await _ask_pause(wake, gate._cancel, min(_ASK_POLL_S, deadline - time.time()))
     except BaseException:
         # Any exit without an answer (cancel, a failed poll, a judge error)
-        # closes the card instead of leaving it pending.
-        await durable_call(_finish_ask, ask_id, "cancelled")
+        # closes the card instead of leaving it pending, and says so: open
+        # views settle the card, and run_code's deadline stops only while one
+        # is pending (tool_runner).
+        try:
+            await durable_call(_finish_ask, ask_id, "cancelled")
+        finally:
+            gate._notify({"event": "permission", "kind": "tool_permission", "id": ask_id, "status": "cancelled"})
         raise
     finally:
         with _ask_waiters_lock:
