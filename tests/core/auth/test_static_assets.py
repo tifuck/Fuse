@@ -79,3 +79,32 @@ def test_a_gz_file_is_served_as_it_is():
     # The same middleware does compress a plain file of that size.
     plain = TestClient(app).get("/static/dict/LICENSE", headers={"accept-encoding": "gzip"})
     assert plain.headers.get("content-encoding") == "gzip"
+
+
+def _static_get(path, accept):
+    """Headers and the bytes on the wire (not decoded) of one /static GET
+    through the app's static mount behind GZipMiddleware."""
+    from app import main
+
+    app = Starlette(
+        routes=[Mount("/static", main.VersionedStaticFiles(directory=str(static_assets.ROOT)))],
+        middleware=[Middleware(GZipMiddleware, minimum_size=1024)],
+    )
+    with TestClient(app).stream("GET", path, headers={"accept-encoding": accept}) as got:
+        assert got.status_code == 200
+        return got.headers, b"".join(got.iter_raw())
+
+
+def test_a_plain_script_names_accept_encoding_once(tree):
+    """GZipMiddleware adds Vary to a plain body it could compress; the static
+    mount used to add its own as well ("Accept-Encoding, Accept-Encoding")."""
+    tree("big.js", "export const x = '" + "a" * 4000 + "';\n")
+    tree("small.js", "export const y = 1;\n")
+
+    headers, raw = _static_get("/static/big.js", "identity")
+    assert "content-encoding" not in headers
+    assert headers["vary"] == "Accept-Encoding"
+    # Under the minimum nothing is ever compressed, so the body does not vary.
+    headers, raw = _static_get("/static/small.js", "gzip")
+    assert "content-encoding" not in headers
+    assert "vary" not in headers
