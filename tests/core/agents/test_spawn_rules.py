@@ -12,7 +12,7 @@ import pytest
 from app import agents, chat_children, chat_runs, chat_store, chats, db
 from app.chat_store import SpawnCapError
 from tests.core.agents._support import (
-    agent_host, bind_parent, child, coding_user, parent_and_thread, routed_provider, tool_names, tool_result,
+    agent_host, agent_of, bind_parent, child, coding_user, parent_and_thread, routed_provider, tool_names, tool_result,
 )
 from tests.core.helpers import quick_user, run_async, run_turn, text_frames, tool_call_frames
 
@@ -315,6 +315,32 @@ def test_a_child_on_another_host_does_not_inherit_the_parents_folder(fresh_db):
     assert trace["status"] == "error"
     _, trace = _spawn(uid, thread, parent, host="nope", background=True)
     assert trace["status"] == "error"
+
+
+def test_a_resumed_child_keeps_its_own_host_and_folder_unless_given_new_ones(fresh_db):
+    uid = coding_user()
+    home, _ = agent_host(uid, "home")
+    other, _ = agent_host(uid, "other")
+    thread, parent = parent_and_thread(uid)
+    bind_parent(uid, parent, home["id"], "/srv/app")
+
+    def finished(trace):
+        chat_store.save_turn_progress(trace["child_id"], [{"role": "user", "content": "inspect"}, {"role": "assistant", "content": "a"}])
+        chat_store.finish_run(trace["child_id"], {"content": "done"}, "completed")
+        return trace["child_id"]
+
+    def resume(worker, **args):
+        _, trace = _spawn(uid, thread, parent, task_id=worker, prompt="continue", background=True, **args)
+        assert trace["child_id"] == worker
+        agent = agent_of(uid, worker)
+        return agent["bound_host_id"], agent["bound_cwd"]
+
+    worker = finished(_spawn(uid, thread, parent, cwd="wt", background=True)[1])
+    assert resume(worker) == (home["id"], "/srv/app/wt")
+    finished({"child_id": worker})
+    assert resume(worker, cwd="lib") == (home["id"], "/srv/app/lib")
+    remote = finished(_spawn(uid, thread, parent, host=other["alias"], background=True)[1])
+    assert resume(remote) == (other["id"], "")
 
 
 def test_one_users_spawn_cannot_target_another_users_run_or_host(fresh_db):
