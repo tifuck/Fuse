@@ -92,16 +92,25 @@ export function createBlocks(ctx) {
 
   // Each field fits its text. Empty prose between boxes (or above the first)
   // is a thin strip until it has focus, so an empty line costs no space but
-  // stays one click or arrow key away.
-  function fit() {
+  // stays one click or arrow key away. A keystroke (`typed`) redraws only the
+  // mirrors whose text changed; every other caller redraws them all.
+  function fit(typed) {
     if (!on) return;
     // As in resizeInput: a transcript kept at the bottom stays there while the composer grows.
     const thread = S.thread;
     const follow = thread && (S.stickToBottom || thread.scrollHeight - thread.scrollTop - thread.clientHeight <= 1);
+    const threadTop = thread ? thread.scrollTop : 0;
+    const hostTop = host.scrollTop;
+    const bar = host.scrollHeight > host.clientHeight;
     copyMetrics();
+    // Every write, then every read, then the heights: one layout for all the
+    // fields instead of one each. While they are collapsed the box keeps its
+    // scrollbar, so prose wraps at the width it will have.
+    const grow = [];
     segs.forEach((seg, i) => {
       const el = seg.el;
       if (seg.kind === "text") {
+        if (!typed) seg.painted = undefined;
         paintLine(seg);
         const gap = !el.value && i < segs.length - 1 && document.activeElement !== el;
         seg.el.classList.toggle("is-gap", gap);
@@ -111,14 +120,25 @@ export function createBlocks(ctx) {
         }
       }
       el.style.height = "auto";
-      el.style.height = el.scrollHeight + (el.offsetHeight - el.clientHeight) + "px";
+      grow.push(el);
     });
+    if (bar) host.style.overflowY = "scroll";
+    const heights = grow.map((el) => el.scrollHeight + (el.offsetHeight - el.clientHeight));
+    grow.forEach((el, i) => { el.style.height = heights[i] + "px"; });
+    host.style.overflowY = "";
+    // Collapsed for the measure, the box and the transcript may have been
+    // scrolled back; put them where they were.
+    host.scrollTop = hostTop;
+    if (thread && !follow && thread.scrollTop !== threadTop) thread.scrollTop = threadTop;
     input.syncDockSpace();
     if (follow) thread.scrollTop = Math.max(0, thread.scrollHeight - thread.clientHeight);
   }
 
   function paintLine(seg) {
-    const { html, styled } = composing === seg.el ? { html: "", styled: false } : marksHtml(seg.el.value);
+    const text = composing === seg.el ? null : seg.el.value;
+    if (seg.painted === text) return;
+    seg.painted = text;
+    const { html, styled } = text === null ? { html: "", styled: false } : marksHtml(text);
     seg.mirror.innerHTML = styled ? html + "\n" : "";
     seg.el.style.webkitTextFillColor = styled ? "transparent" : "";
     seg.node.classList.toggle("is-oblique", styled && italicKeepsWidth(seg.el));
@@ -202,7 +222,7 @@ export function createBlocks(ctx) {
     else if (!sameShape()) {
       render();
       focusAt(next.caret, last);
-    } else fit();
+    } else fit(true);
     S.input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
@@ -431,10 +451,10 @@ export function createBlocks(ctx) {
         S.composerInCode = false;
         S.input.dispatchEvent(new FocusEvent("blur"));
       }
-      window.requestAnimationFrame(fit);
+      window.requestAnimationFrame(() => fit());
     });
     document.addEventListener("selectionchange", syncSelection);
-    window.addEventListener("resize", () => window.requestAnimationFrame(fit));
+    window.addEventListener("resize", () => window.requestAnimationFrame(() => fit()));
     fromInput();
   }
 
