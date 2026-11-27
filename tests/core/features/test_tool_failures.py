@@ -48,6 +48,12 @@ def test_run_code_failures_keep_their_kind_whatever_the_output_says():
     assert tool_failures.classify("read_file a.txt: file not found", kind="code_error") == "code_error"
 
 
+def test_run_code_limits_and_runner_failures_keep_their_kind():
+    # By its text a run_code timeout read as an upstream outage.
+    for kind in ("timeout", "memory", "cpu", "worker", "busy"):
+        assert tool_failures.classify("run_code timed out after 300000ms.", kind=kind) == kind
+
+
 def test_a_record_round_trips_with_its_fields_clipped(fresh_db):
     uid = quick_user()
     trace = "Traceback (most recent call last):\n" + "  frame\n" * 1000 + "TypeError: cannot unpack coroutine"
