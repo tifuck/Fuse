@@ -245,8 +245,12 @@ def _wrap_tip(tool_jobs, state: tuple, calls: list[dict]) -> tuple[tuple, str]:
         except (ValueError, AttributeError):
             code = ""
         jobs.append(tool_jobs.ToolJob(i, call["id"], name, raw, f"ts_{i}", done=True, trace={"status": "done", "code": code}))
+        sites = _sites(code)
+        # A call inside a loop runs more than once: give the tip the calls the runtime would.
+        if classify_code(code)[0] == "snippet" and len(sites) == 1:
+            sites *= 2
         jobs += [tool_jobs.ToolJob(i, call["id"], helper, "{}", f"ts_{i}_c{n}", parent=f"ts_{i}", done=True,
-                                   trace={"status": "done"}) for n, helper in enumerate(_sites(code))]
+                                   trace={"status": "done"}) for n, helper in enumerate(sites)]
     return tool_jobs.wrap_tip(jobs, state)
 
 
@@ -324,6 +328,9 @@ def classify_code(code: str) -> tuple[str, list[str]]:
     # A loop counts only when a call sits inside it (not a .map over one result's lines).
     if len(sites) > 1 or (loop and any(site.start() > loop.start() for site in sites)):
         kind = "snippet"
+    elif not sites:
+        # No tool call (read_result over a kept result, or pure computation): it wraps nothing.
+        kind = "filter"
     else:
         kind = "wrap" if len([line for line in code.splitlines() if line.strip()]) <= 3 else "filter"
     return kind, ["run_terminal_command" if site.group(1) == "sh" else site.group(1) for site in sites]
@@ -386,7 +393,8 @@ def _after_fail(message: dict, calls: list[dict], helpers: list[list[str]]) -> s
         text = str(message.get("content") or "")
         return "claims commit" if CLAIMS_COMMIT.search(text) and not DENIES.search(text) else "reports"
     raw = "\n".join(call["function"].get("arguments") or "" for call in calls)
-    if COMMIT.search(raw) and not TESTS.search(raw) and not _edits(calls, helpers):
+    if COMMIT.search(raw) and not _edits(calls, helpers):
+        # Running the same tests again before the commit fixes nothing either.
         return "resends commit"
     return "works on it"
 
@@ -514,7 +522,7 @@ def _load_app(app_root: Path) -> dict:
         temp_dir="/tmp/fuse/c-eval")
     if "run_code" not in system:
         raise SystemExit("tool_choice: this checkout's coding prompt has no run_code (is code mode off?)")
-    tools = [copy.deepcopy(s) for s in map(agent_catalog.schema, ("run_code", "search_tools", "load_skill", "todo_write", *WORK)) if s]
+    tools = [copy.deepcopy(s) for s in map(agent_catalog.schema, ("run_code", "search_tools", "load_skill", "todo_write", "scratch", *WORK)) if s]
     return {"system": system, "tools": tools, "tool_jobs": tool_jobs, "api": api, "db": db, "sources": sources}
 
 

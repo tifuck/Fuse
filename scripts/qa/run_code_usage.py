@@ -36,7 +36,8 @@ import re
 import sys
 
 WORK = {"read_file", "list_dir", "grep", "glob", "write_file", "search_replace", "run_terminal_command"}
-CALLS = re.compile(r"\[Fuse: (\d+) calls?:")
+CALLS = re.compile(r"^\[Fuse: \d+ calls?: .*$", re.M)
+COUNT = re.compile(r"(\w+)×(\d+)")
 STEP = re.compile(r"ts_(\d+)_(\d+)")
 
 
@@ -76,14 +77,18 @@ def tally(messages: list, since: str, until: str, stats: dict, streaks: dict) ->
                 continue
             if name != "run_code":
                 continue
+            if t.get("kind") == "not_run":
+                # Held back by the step gate (counted in held): it never ran.
+                continue
             if t.get("status") != "done":
                 c["failed"] += 1
                 c["cmd_failed"] += t.get("kind") == "command_failed"
                 continue
             # Rows past the first 40 reads are not stored; the result's calls line counts them all.
             calls = made.get(t.get("id")) or []
-            found = CALLS.search(str(t.get("output") or ""))
-            n = max(len(calls), int(found.group(1)) if found else 0)
+            # The run's own calls line is the last: a returned read_result page can hold an earlier run's.
+            found = CALLS.findall(str(t.get("output") or ""))
+            n = max(len(calls), sum(int(k) for name, k in COUNT.findall(found[-1]) if name != "read_result") if found else 0)
             c["runs"] += 1
             if n == 1:
                 c["one"] += 1
