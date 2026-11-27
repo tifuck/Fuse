@@ -280,13 +280,17 @@ _TASK_METHOD = (
 _BATCH = (
     "- Independent tool calls in one step run concurrently (up to 16 per step). Batch independent "
     "reads, greps, globs, and directory listings into one step instead of one per round-trip; host "
-    "writes, edits, and shell commands on the same host still run in the order you issue them. "
-    "Split calls across "
-    "steps only when one needs another's result.\n"
+    "writes, edits, and shell commands on the same host still run in the order you issue them, and the first "
+    "that fails or exits non-zero stops the later ones on that host (end a command with `|| true` when a "
+    "non-zero exit is no failure, as for grep finding nothing). Split calls across steps only when one needs to "
+    "read another's result: a call that only needs the earlier ones to have worked (edit, then test, then "
+    "commit) goes in the same step.\n"
 )
 _BATCH_CODE = (
     "- Independent direct calls in one step run concurrently (up to 16); host writes, edits and shell commands "
-    "on the same host run in the order you issue them.\n"
+    "on the same host run in the order you issue them, and the first that fails or exits non-zero stops the later "
+    "ones on that host (end a command with `|| true` when a non-zero exit is no failure, as for grep finding "
+    "nothing).\n"
 )
 _LOCATE = (
     "- Locate, then read, with the cheapest search that answers the question: `glob` when you know a "
@@ -315,6 +319,14 @@ def _code_mode(helpers: str, single: str, uses: str) -> str:
     shell = "run_terminal_command" in helpers
     whole = "the whole result and a command's exit code" if shell else "the whole result"
     direct = "`run_terminal_command` call (say, `docker compose ps`)" if shell else "`grep` call (say, for `class Session`)"
+    # Only an agent that changes things sends calls that need the earlier ones to have worked.
+    ahead = (
+        "  - The next call only needs the one before to have worked (edit then test, test then commit, mkdir then "
+        "write): send them in one step, as direct calls (on a host they run in order and the first failure stops "
+        "the rest, which come back \"Not run\") or in a snippet with `sh` (it throws unless the command exits 0).\n"
+        "  - A call whose result you do not need to read before your next call (todo_write, scratch, an edit, a "
+        "write) never gets a step of its own: send it with the next call.\n"
+    ) if "write_file" in helpers else ""
     return (
         "Code mode (`run_code`): one snippet that makes several tool calls in a single step.\n"
         f"- What it is: you write a short JavaScript snippet in which {helpers} are async functions taking the same "
@@ -326,6 +338,7 @@ def _code_mode(helpers: str, single: str, uses: str) -> str:
         "and keeps the bulk out of your context, so you stay fast and accurate in big projects.\n"
         f"  - You must read a result before you can choose the next step ({single}): call that tool directly. You "
         f"get {whole}, and a snippet around one call only adds cost.\n"
+        f"{ahead}"
         "  - You want several results whole and none depends on another: direct calls together in one step.\n"
         f"- A snippet suits: {uses}\n"
         "- Code cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
@@ -389,8 +402,8 @@ _SHELL = (
     "`| grep -E 'FAIL|Error'`) suits a command that will finish: in bash, start it with "
     "`set -o pipefail;` so the exit status is the command's, and keep `| tail` off long-running "
     "commands, since it shows nothing until they exit.\n"
-    "- Quote paths that contain spaces. Chain dependent steps with `&&`; put independent commands in "
-    "separate calls in the same step."
+    "- Quote paths that contain spaces. Chain commands within one call with `&&`; separate calls in one step "
+    "are for independent commands or a chain across tools (an edit, then the command that tests it)."
 )
 _WAIT = (
     "- Waiting: never sleep or poll. A command runs in the foreground (2 min unless you pass "
