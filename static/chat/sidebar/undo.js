@@ -188,7 +188,7 @@ export function createUndo(ctx) {
         const retained = new Set(previous.map(msg => msg.id));
         const removed = current.findLast(msg => msg.role === "user" && !msg.auto && !retained.has(msg.id));
         const payload = { messages: previous, expected_revision: S.serverRevision, command_id: newSession() };
-        const task = S.saveChain.then(() => net.api("/chat/threads/" + origin, {
+        const task = S.saveChain.then(() => net.api("/chat/threads/" + origin + "?pack=1", {
           method: "PATCH",
           body: JSON.stringify(payload),
         }));
@@ -196,7 +196,7 @@ export function createUndo(ctx) {
         const updated = await task;
         if (gen !== S.generation || origin !== S.currentId) break;
         if (stacked) S.undoStack.pop();
-        sync.acceptThread(updated);
+        sync.acceptThread(net.unpackThread(updated));
         // Tag after acceptance: the ids this operation produced are known, so
         // its own inverse stays eligible while anything foreign still refuses.
         S.redoStack.push(tagKnownIds(current));
@@ -256,11 +256,11 @@ export function createUndo(ctx) {
         picker.setHint("History changed elsewhere; that redo point is no longer valid.", "warn");
         return;
       }
-      const updated = await net.api('/chat/threads/' + origin, { method: 'PATCH', body: JSON.stringify({
+      const updated = await net.api('/chat/threads/' + origin + '?pack=1', { method: 'PATCH', body: JSON.stringify({
         messages: next, expected_revision: S.serverRevision, command_id: newSession(),
       }) });
       if (origin !== S.currentId || gen !== S.generation) return;
-      sync.acceptThread(updated);
+      sync.acceptThread(net.unpackThread(updated));
       // Tag after acceptance (see undoConversation): the redo's own output
       // must count as known for its inverse undo.
       S.undoStack.push(tagKnownIds(current));

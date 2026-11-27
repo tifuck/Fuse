@@ -48,15 +48,40 @@ export function marksHtml(text, issues = []) {
       default: return plain(node.s, node.e);
     }
   };
+  // `parts` is `html` cut after every newline that no markup or mark spans,
+  // so a mirror can redraw only the lines that changed.
+  const parts = [];
+  let part = "";
+  const cut = (from, to) => {
+    let pos = from;
+    for (let nl = text.indexOf("\n", from); nl >= 0 && nl < to; nl = text.indexOf("\n", nl + 1)) {
+      if (issues.some((issue) => issue.start <= nl && issue.end > nl + 1)) continue;
+      parts.push(part + plain(pos, nl + 1));
+      part = "";
+      pos = nl + 1;
+    }
+    part += plain(pos, to);
+  };
+  const top = (from, to) => {
+    let pos = from;
+    for (const node of parseInline(text.slice(from, to), false, from)) {
+      if (node.s > pos) cut(pos, node.s);
+      if (node.t === "text" || node.t === "br") cut(node.s, node.e);
+      else part += draw(node);
+      pos = Math.max(pos, node.e);
+    }
+    if (to > pos) cut(pos, to);
+  };
   // Inline markup never crosses a blank line, as in the sent message.
-  let html = "";
   let pos = 0;
   for (const gap of text.matchAll(/\n[ \t]*\n/g)) {
-    html += nodes(parseInline(text.slice(pos, gap.index), false, pos), pos, gap.index) + plain(gap.index, gap.index + gap[0].length);
+    top(pos, gap.index);
+    cut(gap.index, gap.index + gap[0].length);
     pos = gap.index + gap[0].length;
   }
-  html += nodes(parseInline(text.slice(pos), false, pos), pos, text.length);
-  return { html, styled };
+  top(pos, text.length);
+  parts.push(part);
+  return { html: parts.join(""), styled, parts };
 }
 
 // Italic may slant only where it keeps every glyph's width (monospace, or a

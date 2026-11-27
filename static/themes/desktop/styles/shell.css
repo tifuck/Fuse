@@ -12,6 +12,10 @@
 @property --dk-under { syntax: "*"; inherits: false; }
 /* A length, so docking Activity can slide its column open (and push the chat). */
 @property --dk-insp-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* Follows --chat-history, which a sidebar drag writes every frame, so like it
+   (tokens/root.css) it is not inherited: the chat root's own columns read it,
+   and the one box under it that does asks with "inherit" (activity.css). */
+@property --dk-side-w { syntax: "*"; inherits: false; }
 html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   /* Surfaces, derived from the palette: the canvas a breath above its
      background, the sidebar a shade darker than the canvas. */

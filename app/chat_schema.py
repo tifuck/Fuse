@@ -994,7 +994,7 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
             "exit_code",
             "pattern",
             "background",
-            "output", "output_chars", "output_bytes", "truncated", "kind", "suggestion", "job_id", "execution_status",
+            "output", "output_chars", "output_bytes", "output_lines", "match_count", "truncated", "kind", "suggestion", "job_id", "execution_status",
             "command_id", "state", "termination_confirmed", "output_chars_exact", "output_retained_chars", "output_mode", "output_start",
             "project_root", "platform", "offset", "limit", "include", "max_matches", "call_duration_ms", "execution_duration_ms",
             "agent_work_ms",
@@ -1159,7 +1159,7 @@ def _parse_tool_traces(raw, *, strict: bool = False, field: str = "tools") -> li
                 if strict:
                     raise ChatValidationError(f"{field}[{index}].event_count must be an integer")
         for count_key in ("bytes", "http_status", "agent_tool_uses", "agent_tokens", "agent_gen_ms", "agent_gen_out", "agent_gen_est",
-                          "lines_added", "lines_removed"):
+                          "lines_added", "lines_removed", "output_lines", "match_count"):
             value = item.get(count_key)
             if value is None:
                 continue

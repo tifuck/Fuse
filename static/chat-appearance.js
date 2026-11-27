@@ -396,6 +396,14 @@
     return el;
   }
 
+  // Only the scene's layers read the strength, so it is set on the scene: a
+  // change restyles the scene, not the page. The first apply runs before the
+  // body is parsed and leaves it on <html> for the first paint.
+  function applyStrength(scene) {
+    const target = scene || (document.body ? null : html);
+    target?.style.setProperty("--chat-backdrop-strength", String(strength / 100));
+  }
+
   function apply() {
     const spec = specFor(theme);
     html.dataset.chatTheme = theme;
@@ -414,7 +422,6 @@
     html.style.setProperty("--sans", font.stack);
     html.style.setProperty("--mono", font.stack);
     html.style.setProperty("--code", font.kind === "mono" ? font.stack : FONTS.redhat.stack);
-    html.style.setProperty("--chat-backdrop-strength", String(strength / 100));
     if (theme === "custom") {
       for (const [key, prop] of Object.entries(THEME_VARS)) html.style.setProperty(prop, spec[key]);
     } else {
@@ -425,6 +432,7 @@
     document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", spec.scheme);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", spec.ink);
     const scene = ensureScene();
+    applyStrength(scene);
     if (scene) {
       scene.hidden = shownBackdrop() === "none";
       scene.dataset.kind = shownBackdrop();
@@ -1009,12 +1017,20 @@
     syncSwatches();
   }
 
+  // A drag sends a value a frame; storage gets the one it rests on, or the
+  // last one if the page goes first.
+  let strengthSave = 0;
+  window.addEventListener("pagehide", () => { if (strengthSave) persistBackdrop(); });
   function setStrength(next) {
     const value = Math.round(Number(next));
     if (!Number.isFinite(value)) return;
     strength = Math.min(STRENGTH_MAX, Math.max(STRENGTH_MIN, value));
-    persistBackdrop();
-    apply();
+    clearTimeout(strengthSave);
+    strengthSave = setTimeout(() => {
+      strengthSave = 0;
+      persistBackdrop();
+    }, 250);
+    applyStrength(ensureScene());
     const range = document.querySelector("[data-chat-backdrop-strength]");
     if (range) range.value = String(strength);
     const out = document.querySelector("[data-chat-backdrop-strength-value]");
@@ -1167,17 +1183,33 @@
       }).observe(backHost);
     }
     loadCustomBackdrops();
+    // A color picker or the size slider can fire input faster than frames,
+    // and each apply restyles the page: one runs a frame, with the last value.
+    const perFrame = (fn) => {
+      let frame = 0;
+      let value;
+      return (next) => {
+        value = next;
+        frame ||= requestAnimationFrame(() => {
+          frame = 0;
+          fn(value);
+        });
+      };
+    };
+    const inkInput = perFrame((ink) => setCustom({ ink, brass: custom.brass }));
+    const brassInput = perFrame((brass) => setCustom({ ink: custom.ink, brass }));
+    const sizeInput = perFrame((size) => window.FuseChatAppearance.setSize(size));
     document.querySelector("[data-chat-custom-ink]")?.addEventListener("input", (event) => {
-      setCustom({ ink: event.target.value, brass: custom.brass });
+      inkInput(event.target.value);
     });
     document.querySelector("[data-chat-custom-brass]")?.addEventListener("input", (event) => {
-      setCustom({ ink: custom.ink, brass: event.target.value });
+      brassInput(event.target.value);
     });
     document.querySelector("[data-chat-backdrop-strength]")?.addEventListener("input", (event) => {
       setStrength(event.target.value);
     });
     sizeRange?.addEventListener("input", () => {
-      window.FuseChatAppearance.setSize(sizeRange.value);
+      sizeInput(sizeRange.value);
     });
     document.querySelectorAll("[data-size-step]").forEach((btn) => {
       btn.addEventListener("click", () => {

@@ -118,29 +118,100 @@ export function createPaint(ctx) {
     dispose: node => { if (node.nodeType === 1) ui.disposeThinking(node); },
   };
 
+    // Shells that came into view hydrate a few per frame, nearest the view
+  // first, so a fast scroll through history never stacks every reply (and its
+  // layouts) into one frame.
+  const HISTORY_MARGIN = 600;
+  const HYDRATE_PER_FRAME = 2;
+  const hydrateQueue = new Map();
+  let hydrateFrame = 0;
+
     const historyObserver = typeof IntersectionObserver === "function" ? new IntersectionObserver(entries => {
-    for (const entry of entries) if (entry.isIntersecting) hydrateHistoricalMessage(entry.target);
-  }, { root: S.thread, rootMargin: "600px 0px" }) : null;
+    for (const entry of entries) {
+      if (!entry.isIntersecting) { hydrateQueue.delete(entry.target); continue; }
+      const view = entry.rootBounds;
+      const box = entry.boundingClientRect;
+      hydrateQueue.set(entry.target, view ? Math.max(0, view.top + HISTORY_MARGIN - box.bottom, box.top - view.bottom + HISTORY_MARGIN) : 0);
+    }
+    if (hydrateQueue.size && !hydrateFrame) hydrateFrame = requestAnimationFrame(flushHydration);
+  }, { root: S.thread, rootMargin: `${HISTORY_MARGIN}px 0px` }) : null;
+
+    function flushHydration() {
+    hydrateFrame = 0;
+    const batch = [...hydrateQueue].sort((a, b) => a[1] - b[1]).slice(0, HYDRATE_PER_FRAME).map(([shell]) => shell);
+    batch.forEach(shell => hydrateQueue.delete(shell));
+    hydrateHistoricalMessages(batch);
+    if (hydrateQueue.size) hydrateFrame = requestAnimationFrame(flushHydration);
+  }
 
     function hydrateHistoricalMessage(shell) {
-    if (!shell.isConnected || !shell.hasAttribute("data-deferred-message")) { historyObserver?.unobserve(shell); return; }
+    hydrateQueue.delete(shell);
+    hydrateHistoricalMessages([shell]);
+  }
+
+    // One measure before and one after the whole batch: every shell rendered
+  // detached first, then all swapped in.
+  function hydrateHistoricalMessages(shells) {
     const shown = viewMessages();
-    const index = shown.findIndex(msg => msg.id === shell.dataset.messageId);
-    if (index < 0) return;
-    historyObserver?.unobserve(shell);
+    const ready = [];
+    for (const shell of shells) {
+      if (!shell.isConnected || !shell.hasAttribute("data-deferred-message")) { historyObserver?.unobserve(shell); continue; }
+      const msg = shown.find(item => item.id === shell.dataset.messageId);
+      if (msg) ready.push([shell, msg]);
+    }
+    if (!ready.length) return;
     const viewport = follow.captureThreadViewport();
-    const previousHeight = shell.offsetHeight;
-    const article = ui.renderAssistant(shown[index], false);
-    article.dataset.messageId = shown[index].id;
-    shell.replaceWith(article);
-    paintRecaps(article);
+    const previousHeight = ready.reduce((sum, [shell]) => sum + shell.offsetHeight, 0);
+    const articles = ready.map(([shell, msg]) => {
+      historyObserver?.unobserve(shell);
+      const article = ui.renderAssistant(msg, false);
+      article.dataset.messageId = msg.id;
+      article._paintKey = assistantKey(article, msg);
+      return article;
+    });
+    ready.forEach(([shell], i) => {
+      shell.replaceWith(articles[i]);
+      paintRecaps(articles[i]);
+    });
     if (viewport.following && S.stickToBottom) {
       // Loading older history is not new model output. Compensate its height
       // immediately instead of animating through pages of newly mounted text.
-      S.thread.scrollTop = viewport.top + article.offsetHeight - previousHeight;
+      S.thread.scrollTop = viewport.top + articles.reduce((sum, article) => sum + article.offsetHeight, 0) - previousHeight;
       S.lastThreadScrollTop = S.thread.scrollTop;
       follow.scrollThread();
     } else follow.restoreThreadViewport(viewport);
+  }
+
+    // What a settled reply's article is drawn from: its message, which one the
+  // article holds, and the page state the theme reads for it. Strings compare
+  // by value, objects by their JSON, calls by tracesSig.
+  function assistantKey(article, msg) {
+    const key = [article._message === msg, S.showThinking, ui.visibleAssistantError(msg), traces.tracesSig(msg.tools)];
+    const push = (name, value) => key.push(name, value && typeof value === "object" ? JSON.stringify(value) : value);
+    for (const [name, value] of Object.entries(msg)) {
+      if (name === "tools") continue;
+      if (name !== "segments" || !Array.isArray(value)) { push(name, value); continue; }
+      for (const part of value) {
+        if (!part || typeof part !== "object") { push("", part); continue; }
+        key.push(Object.keys(part).length);
+        for (const [field, data] of Object.entries(part)) push(field, data);
+      }
+    }
+    return key;
+  }
+
+    // A snapshot or full paint repeats every reply. A settled one that is not
+  // the newest keeps its article when nothing it is drawn from changed; the
+  // theme clears the key whenever it draws the article itself.
+  function syncAssistant(article, msg, live) {
+    const settled = !live && S.messages[S.messages.length - 1] !== msg && !article.hasAttribute("data-deferred-message");
+    const kept = settled && article._paintKey;
+    if (kept) {
+      const key = assistantKey(article, msg);
+      if (kept.length === key.length && kept.every((value, i) => value === key[i])) return;
+    }
+    ui.updateAssistant(article, msg, live);
+    article._paintKey = settled ? assistantKey(article, msg) : null;
   }
 
     function renderTranscriptMessage(msg, index, live, older) {
@@ -232,7 +303,7 @@ export function createPaint(ctx) {
       if (article !== cursor) S.log.insertBefore(article, cursor);
       cursor = article.nextElementSibling;
       keep.add(article);
-      if (reusable && msg.role === "assistant") ui.updateAssistant(article, msg, live);
+      if (reusable && msg.role === "assistant") syncAssistant(article, msg, live);
     });
     for (const article of [...S.log.children]) if (!keep.has(article)) { ui.disposeThinking(article); historyObserver?.unobserve(article); article.remove(); }
     S.log._threadId = S.currentId;
@@ -264,7 +335,10 @@ export function createPaint(ctx) {
       paint();
       return;
     }
-    const viewport = follow.captureThreadViewport();
+    // A reader following the bottom is pinned again by the thread's
+    // ResizeObserver once layout has run (chat.js); measuring around the
+    // update would force that layout here, every streamed frame.
+    const viewport = S.stickToBottom ? null : follow.captureThreadViewport();
     ui.updateAssistant(last, msg, messageRunLive(msg));
     paintRecaps(last);
     // A streamed frame leaves the pane and the header alone unless what they
@@ -280,7 +354,7 @@ export function createPaint(ctx) {
       }
     } else context.syncContextMeter();
     ui.syncLiveDock();
-    follow.restoreThreadViewport(viewport);
+    if (viewport) follow.restoreThreadViewport(viewport);
   }
 
     function activeAssistant() {
@@ -301,6 +375,7 @@ export function createPaint(ctx) {
     schedulePaintLast,
     setActive,
     setPartialTranscript,
+    syncAssistant,
     transcriptDomOptions,
     viewMessages,
     visibleRecaps,

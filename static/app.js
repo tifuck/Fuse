@@ -1264,8 +1264,10 @@ document.querySelectorAll(".probe").forEach((btn) => {
   }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["open"] });
 
   // The bars grow after first paint (Console adds its title line), so the
-  // offset follows their size.
+  // offset follows their size. Each bar is observed once: observe() reports
+  // at once, so observing again from this callback would run it every frame.
   const barWatch = typeof ResizeObserver === "function" ? new ResizeObserver(() => rehome()) : null;
+  const watchedBars = new Set();
 
   function rehome() {
     if (!toastRoot) return;
@@ -1274,9 +1276,16 @@ document.querySelectorAll(".probe").forEach((btn) => {
     // The stack hangs under the page's header bar (and chat's agent strip),
     // clear of the composer.
     let top = 0;
-    barWatch?.disconnect();
+    watchedBars.forEach((bar) => {
+      if (bar.isConnected) return;
+      barWatch.unobserve(bar);
+      watchedBars.delete(bar);
+    });
     document.querySelectorAll(".chat-bar, [data-chat-bar], .chat-work").forEach((bar) => {
-      barWatch?.observe(bar);
+      if (barWatch && !watchedBars.has(bar)) {
+        watchedBars.add(bar);
+        barWatch.observe(bar);
+      }
       if (bar.hidden) return;
       const r = bar.getBoundingClientRect();
       if (r.height && r.top < 200) top = Math.max(top, r.bottom);

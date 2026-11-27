@@ -15,7 +15,6 @@
 <script src="{{ asset('chat-appearance.js') }}"></script>
 <script type="module" src="{{ asset('chat-backdrop.js') }}"></script>
   <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/theme.css') }}">
-  <link rel="stylesheet" href="{{ asset('chat-design.css') }}">
   <link rel="stylesheet" href="{{ asset('themes/' ~ chat_view ~ '/styles/design.css') }}">
 {% endblock %}
 {% block body %}
@@ -34,7 +33,7 @@
 <script src="{{ asset('composer-spell.js') }}"></script>
 <script src="{{ asset('composer-complete.js') }}"></script>
 <script src="{{ asset('skills.js') }}"></script>
-<script src="{{ asset('vendor/highlight/highlight.min.js') }}"></script>
+<script type="application/json" id="hljs-src">{{ asset('vendor/highlight/highlight.min.js') | tojson }}</script>
 <script src="{{ asset('spinner-next.js') }}"></script>
 <script src="{{ asset('spinner-future.js') }}"></script>
   <script src="{{ asset('chat-dom.js') }}"></script>

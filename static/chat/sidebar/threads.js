@@ -2,6 +2,7 @@
 import { S } from '../state.js';
 import { acceptPool } from '../poolbadge.js';
 import { draftKey, newSession, resolveListedModel } from '../state.js';
+import { sendThreadView } from '../sync/stream.js';
 
 function isUntitledThread(current) {
   if (!current) return true;
@@ -355,11 +356,14 @@ export function createThreads(ctx) {
     const switched = S.currentId !== data.id;
     if (switched) S.permCards.clear();
     S.currentId = data.id;
+    sendThreadView();
     S.sessionId = "thread-" + data.id;
     const listed = resolveListedModel(data.model);
     // Saved for the chat's own model: another model keeps its own effort.
     S.threadEffort = data.reasoning_effort && listed ? { model: listed, value: data.reasoning_effort } : null;
     if (listed) S.modelId = listed;
+    // Before the picker draws the badge: a chat with no meter asks once.
+    acceptPool(data.compaction?.pool);
     picker.renderPickerButton();
     S.contextCut = data.context_cut || null;
     S.threadRecaps = transcript.visibleRecaps(data);
@@ -384,7 +388,6 @@ export function createThreads(ctx) {
     sync.setRunning(false);
     sync.healStuckRun(S.activeRun);
     context.acceptCacheProbe(data.compaction?.cache);
-    acceptPool(data.compaction?.pool);
     if (data.compaction && data.compaction.meter) context.acceptMeter(data.compaction.meter);
     else context.syncContextMeter();
     S.acceptedQueueCommands = new Set(data.accepted_queue_ids || []);
@@ -544,6 +547,7 @@ export function createThreads(ctx) {
         command_id: newSession(),
       }),
     });
+    if (id === S.currentId) S.serverRevision = Math.max(S.serverRevision, updated.revision);
     upsertLocal(updated);
     render.renderHistory();
   }
@@ -607,6 +611,7 @@ export function createThreads(ctx) {
               command_id: newSession(),
             }),
           });
+          if (id === S.currentId) S.serverRevision = Math.max(S.serverRevision, updated.revision);
           upsertLocal(updated);
           if (nav === S.navigation && S.currentId === id && updated.archived) chatApi.clearChatState({ keepList: true });
           render.renderHistory();
@@ -641,10 +646,12 @@ export function createThreads(ctx) {
               // Only a 404 means it is gone: a failed refetch or retry left
               // the chat on the server, so it must stay in the list.
               try {
-                const fresh = await net.api("/chat/threads/" + id);
+                // The 409 names the current revision; reading the whole chat
+                // for it is the fallback.
+                const revision = Number.isSafeInteger(error.data?.revision) ? error.data.revision : (await net.api("/chat/threads/" + id + "?pack=1")).revision;
                 await net.api("/chat/threads/" + id, {
                   method: "DELETE",
-                  body: JSON.stringify({ expected_revision: fresh.revision, command_id: newSession() }),
+                  body: JSON.stringify({ expected_revision: revision, command_id: newSession() }),
                 });
               } catch (retryError) {
                 if (retryError.status === 404) {

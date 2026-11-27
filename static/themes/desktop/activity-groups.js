@@ -441,8 +441,8 @@ function consoleActivityEntriesHtml(entries, msg, live) {
   }
 
 // A script's row reads like any call: its description, then how many calls
-// it made (or why it ended). It opens to those calls, three or more reads in
-// a row as one row, then its code and what it returned.
+// it made (or why it ended). It opens to its code, then those calls (three or
+// more reads in a row as one row), then what it returned.
 function scriptRowHtml(item, live, openMap) {
     const { entry: { trace }, calls, key } = item;
     const presentation = deps.toolPresentation(trace, live);
@@ -459,7 +459,9 @@ function scriptRowHtml(item, live, openMap) {
       : presentation.interrupted ? `${finished} of ${steps} done` : steps;
     // No description: the code's first line says what it is, as in Console.
     const name = trace.description || parts.code.split("\n").map((l) => l.trim()).find(Boolean) || "Script";
-    const rows = [];
+    // In the order they happened: the code, the calls it made, then what it
+    // returned (or its error).
+    const rows = parts.code ? [codeRowHtml(trace, parts, `${key}:code`, deps.stepOpenAt(openMap, `${key}:code`))] : [];
     for (let at = 0; at < calls.length;) {
       let end = at;
       const reading = (c) => c && c.trace.name === "read_file" && deps.toolPresentation(c.trace, live).state === "done";
@@ -473,7 +475,7 @@ function scriptRowHtml(item, live, openMap) {
       const k = deps.toolKey(c.trace, c.index);
       rows.push(deps.toolStepHtml(c.trace, k, live, deps.stepOpenAt(openMap, k), openMap, { oneLine: true }));
     }
-    if (parts.code) rows.push(codeRowHtml(trace, parts, `${key}:code`, deps.stepOpenAt(openMap, `${key}:code`)));
+    if (parts.code && parts.result.trim()) rows.push(resultRowHtml(trace, parts, `${key}:out`, deps.stepOpenAt(openMap, `${key}:out`)));
     // A description reads as a sentence, like a described command's.
     // One the step gate held back says it did not run.
     const said = (trace.description ? deps.rowSentence(deps.ccFlat(trace.description), presentation, false, Boolean(notRun)) : null)
@@ -516,20 +518,23 @@ function readsRowHtml(reads, live, openMap) {
   }
 
 function codeRowHtml(trace, parts, key, open) {
-    // A failed run's text is its error, the calls that finished before it and
-    // its console output: shown, not dropped.
-    const failed = deps.toolPresentation(trace, false).failed;
-    const out = parts.result.trim();
-    const ret = out
-      ? `<div class="dk-code-part"><div class="dk-code-label">${failed ? "Error" : "Returned"}</div><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre>${deps.consoleTruncationNote(trace)}</div>` : "";
-    // What it returned, as in Console: a one-line value itself, else how long
-    // it is. An error is named by the line already.
-    const said = out ? out.split("\n") : [];
-    const meta = !out || failed ? "" : said.length === 1 ? `Returned ${deps.ccClip(deps.ccFlat(said[0]), 80)}` : `Returned ${said.length} lines`;
-    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">The script</span>${ret ? `<span class="chat-console-val">${failed ? "and its error" : "and its result"}</span>` : ""}</span>${meta ? `<span class="chat-console-result-text">${deps.escapeHtml(meta)}</span>` : ""}`;
     const lines = parts.code.split("\n").length;
-    const body = `${ret}<div class="dk-code-part"><div class="dk-code-label">Code <span>JavaScript · ${lines} ${lines === 1 ? "line" : "lines"}</span></div>` +
-      `<pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`;
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">The script</span></span>` +
+      `<span class="chat-console-result-text">JavaScript · ${lines} ${lines === 1 ? "line" : "lines"}</span>`;
+    const body = `<div class="dk-code-part"><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>`;
+    return boxRowHtml(key, line, deps.callBoxHtml({ body }), open, " is-dk-coderow");
+  }
+
+// What the script returned, as in Console: a one-line value itself, else how
+// long it is. A failed run's text is its error, the calls that finished before
+// it and its console output: shown, not dropped.
+function resultRowHtml(trace, parts, key, open) {
+    const failed = deps.toolPresentation(trace, false).failed;
+    const said = parts.result.trim().split("\n");
+    const meta = said.length === 1 ? deps.ccClip(deps.ccFlat(said[0]), 80) : `${said.length} lines`;
+    const line = `${deps.rowIconHtml(trace)}<span class="chat-console-call is-described"><span class="chat-tool-action">${failed ? "Its error" : "Returned"}</span></span>` +
+      `<span class="chat-console-result-text">${deps.escapeHtml(meta)}</span>`;
+    const body = `<div class="dk-code-part"><pre class="chat-console-out is-stdout">${deps.escapeHtml(parts.result)}</pre>${deps.consoleTruncationNote(trace)}</div>`;
     return boxRowHtml(key, line, deps.callBoxHtml({ body }), open, " is-dk-coderow");
   }
 

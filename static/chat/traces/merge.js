@@ -462,7 +462,7 @@ export function createMerge(ctx) {
           exit_code: job.exit_code != null && Number.isFinite(Number(job.exit_code)) ? Number(job.exit_code) : null,
           duration_ms: job.duration_ms != null && Number.isFinite(Number(job.duration_ms)) ? Number(job.duration_ms) : null,
           error: job.error || "",
-          output: typeof job.output === "string" ? job.output : job.out || "",
+          output: typeof job.output === "string" ? job.output : "",
         });
         changed = true;
       });

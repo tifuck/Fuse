@@ -71,6 +71,16 @@ export function createApply(ctx) {
     status.syncStatus();
   }
 
+    // A thread.updated that changed only what its row carries (labels_only):
+    // the sidebar took the row; these are the open chat's switches.
+    function acceptLabels(data) {
+    S.threadBypass = Boolean(data.bypass_permissions);
+    S.threadAuto = Boolean(data.auto_permissions);
+    S.threadMemoryOff = Boolean(data.memory_off);
+    perms.syncPermChip();
+    panels.syncMemoryUi();
+  }
+
     function acceptThread(data) {
     if (data && !Number.isSafeInteger(data.event_cursor)) throw new Error("Chat snapshot is missing event_cursor; live sync requires a consistent snapshot.");
     if (!data || data.id !== S.currentId) return;
@@ -212,7 +222,7 @@ export function createApply(ctx) {
         const article = S.log.children[i];
         if (msg.role === "assistant") {
           const live = messageRunLive(msg);
-          ui.updateAssistant(article, msg, live);
+          transcript.syncAssistant(article, msg, live);
         } else if (article.querySelector("[data-user-text]")) {
           const text = article.querySelector("[data-user-text]");
           if (text.dataset.userText !== msg.content) ui.fillUserText(text, msg.content);
@@ -550,6 +560,7 @@ export function createApply(ctx) {
 
   return {
     acceptContext,
+    acceptLabels,
     acceptThread,
     applyFuseEvent,
     applyProgressPayload,

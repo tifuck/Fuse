@@ -28,6 +28,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const states = new Map();
 let raf = 0;
+let timer = 0;
 
 function fieldVel(k, p) {
   const F = FIELDS[k];
@@ -214,7 +215,7 @@ function frame(ms) {
   const still = reduceMotion.matches;
   // A frame budget: draws at FPS, the swarm still moving in 60ths of a second.
   if (!still && last && now - last < 1 / FPS - 0.004) {
-    if (onScreen.size) raf = requestAnimationFrame(frame);
+    if (onScreen.size) sleep((1 / FPS - 0.004 - (now - last)) * 1000);
     return;
   }
   const dt = last ? clamp(now - last, 0, 4 / 60) : 1 / 60;
@@ -239,17 +240,24 @@ function frame(ms) {
     }
   }
   for (const [key, st] of states) if (now - st.seen > 30) states.delete(key);
-  if (onScreen.size && !still) raf = requestAnimationFrame(frame);
+  if (onScreen.size && !still) sleep((1 / FPS - 0.004) * 1000 - (performance.now() - ms));
+}
+
+// One display frame per drawn frame: the loop sleeps through the rest.
+function sleep(ms) {
+  timer = setTimeout(() => { timer = 0; wake(); }, ms);
 }
 
 function wake() {
-  if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
+  if (!raf && !timer && !document.hidden) raf = requestAnimationFrame(frame);
 }
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) { wake(); return; }
   cancelAnimationFrame(raf);
+  clearTimeout(timer);
   raf = 0;
+  timer = 0;
   last = 0;
 });
 reduceMotion.addEventListener?.("change", wake);

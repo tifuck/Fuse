@@ -543,6 +543,10 @@ class VersionedStaticFiles(StaticFiles):
                     return Response(status_code=304, headers=headers)
                 if scope.get("method") == "HEAD":
                     return Response(headers={**headers, "Content-Length": str(len(body))}, media_type=media)
+                if not encoding:
+                    # GZipMiddleware adds its own Vary to a plain body it
+                    # could compress; one below its minimum never varies.
+                    del headers["Vary"]
                 return Response(body, headers=headers, media_type=media)
         response = await super().get_response(path, scope)
         if response.status_code not in (200, 304):

@@ -200,6 +200,10 @@ function initState() {
   S.contextEdit = 0;
   S.contextSaving = null;
   S.sending = false;
+  // The chat a turn's POST is in flight for, and whether its run's events
+  // came over the socket before the reply (turns/send.js, sync/stream.js).
+  S.sendingThread = "";
+  S.sendRaced = false;
   S.loading = false;
   S.partialTranscript = false;
   S.healRunId = "";

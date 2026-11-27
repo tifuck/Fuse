@@ -1,0 +1,199 @@
+/* The part of chat-design.css that styles every page that has it: the
+   palettes and the chat's backdrop scene. chat-design.css @imports it for the
+   settings pages; on /chat each theme's design.css @imports it ahead of its
+   own copy of the rest (themes/<id>/styles/base/chat-design.css). */
+html[data-chat-theme] {
+  --sans: "Bricolage Grotesque", sans-serif;
+  --mono: "Red Hat Mono", ui-monospace, monospace;
+  --on-brass: var(--ink);
+  --spell: color-mix(in srgb, var(--fault) 78%, var(--brass) 22%);
+  /* Diff marks are a matched red/green pair in every theme. --ok and --fault
+     follow each palette (--ok is lime or amber in several), so diffs do not. */
+  --diff-add: #6fcf87;
+  --diff-del: #ef7f76;
+  /* Tool-call state marks share the diff pair: green done, red failed,
+     plain text color while running. Never the accent. */
+  --call-done: var(--diff-add);
+  --call-fail: var(--diff-del);
+  --call-live: var(--mist);
+  --call-idle: var(--mute);
+  caret-color: var(--brass);
+  accent-color: var(--brass);
+}
+html[data-chat-theme="paper"],
+html[data-chat-theme="sand"],
+html[data-chat-theme="frost"],
+html[data-chat-theme="matcha"],
+html[data-chat-theme="ivory"] {
+  --spell: color-mix(in srgb, var(--fault) 70%, var(--mist) 30%);
+}
+html[data-chat-theme="fuse"] {
+  color-scheme: dark;
+  --ink: #000000; --panel: #0e0e0e; --raise: #181818; --mist: #ececec; --mute: #9a9a9a; --line: #262626;
+  --brass: #a5d8ff; --steel: #a6c0d0; --reason: #aebcc5; --fault: #f29d8e; --ok: #aed397; --chat-code-bg: #070707;
+}
+html[data-chat-theme="paper"] {
+  color-scheme: light;
+  --ink: #ffffff; --panel: #f3f1ec; --raise: #e7e3da; --mist: #1c1b18; --mute: #6a655c; --line: #d5cfc4;
+  --brass: #b45c2e; --steel: #2f6a4a; --reason: #4e5a66; --fault: #c24b40; --ok: #2f7a48; --on-brass: #ffffff; --chat-code-bg: #f4f1ea;
+}
+html[data-chat-theme="midnight"] {
+  color-scheme: dark;
+  --ink: #0a1018; --panel: #121a28; --raise: #1b2638; --mist: #e8eef6; --mute: #8b97a8; --line: #243044;
+  --brass: #e3bc81; --steel: #7ec8e8; --reason: #a8b4c8; --fault: #f0a49b; --ok: #8fcdb0; --chat-code-bg: #070c12;
+}
+html[data-chat-theme="void"] {
+  color-scheme: dark;
+  --ink: #000000; --panel: #0c0c0c; --raise: #161616; --mist: #f2f2f2; --mute: #8c8c8c; --line: #222222;
+  --brass: #5ef2c0; --steel: #8ad4c4; --reason: #9aa4b0; --fault: #ff8b7e; --ok: #7ee0a8; --on-brass: #000000; --chat-code-bg: #000000;
+}
+html[data-chat-theme="ember"] {
+  color-scheme: dark;
+  --ink: #16110e; --panel: #1f1915; --raise: #2a221c; --mist: #f3ebe3; --mute: #a89888; --line: #3a3028;
+  --brass: #e08a5c; --steel: #d4a07a; --reason: #cbb6a6; --fault: #ef8b78; --ok: #c5c07a; --chat-code-bg: #120e0b;
+}
+html[data-chat-theme="moss"] {
+  color-scheme: dark;
+  --ink: #101410; --panel: #171c17; --raise: #222822; --mist: #e8eee6; --mute: #8f9a88; --line: #2c342c;
+  --brass: #c6b06a; --steel: #8fbf8a; --reason: #b7c4b0; --fault: #e09a7a; --ok: #9dca86; --chat-code-bg: #0c100c;
+}
+html[data-chat-theme="rose"] {
+  color-scheme: dark;
+  --ink: #161014; --panel: #1f171c; --raise: #2b2128; --mist: #f4e8ee; --mute: #a8909a; --line: #3a2c34;
+  --brass: #e8a0b4; --steel: #c9a0c4; --reason: #d0b8c4; --fault: #ef8b9a; --ok: #c8c090; --chat-code-bg: #120c10;
+}
+html[data-chat-theme="ocean"] {
+  color-scheme: dark;
+  --ink: #07141a; --panel: #0d1c24; --raise: #152830; --mist: #dff3f4; --mute: #7fa0a8; --line: #1e3640;
+  --brass: #6ad4c8; --steel: #7eb8d4; --reason: #a8c8d0; --fault: #f0a49b; --ok: #8fcdb0; --chat-code-bg: #051016;
+}
+html[data-chat-theme="dusk"] {
+  color-scheme: dark;
+  --ink: #12101a; --panel: #1a1826; --raise: #262436; --mist: #ece8f6; --mute: #9a94b0; --line: #322e44;
+  --brass: #c4b5e8; --steel: #8eb0e8; --reason: #b8b0d0; --fault: #f0a4c0; --ok: #a8d0c0; --chat-code-bg: #0e0c16;
+}
+html[data-chat-theme="wine"] {
+  color-scheme: dark;
+  --ink: #140a0e; --panel: #1c1014; --raise: #2a181c; --mist: #f4e8e6; --mute: #a88888; --line: #3a2428;
+  --brass: #d4b06a; --steel: #c49090; --reason: #d0b8b0; --fault: #ef8b78; --ok: #c0c080; --chat-code-bg: #10080c;
+}
+html[data-chat-theme="slate"] {
+  color-scheme: dark;
+  --ink: #12151a; --panel: #191e26; --raise: #242a34; --mist: #e8eef4; --mute: #8b97a8; --line: #2c3440;
+  --brass: #7aa2ff; --steel: #8ec8e0; --reason: #a8b8d0; --fault: #f0a49b; --ok: #8fcdb0; --chat-code-bg: #0e1218;
+}
+html[data-chat-theme="carbon"] {
+  color-scheme: dark;
+  --ink: #0a0a0a; --panel: #141414; --raise: #1e1e1e; --mist: #f0f0f0; --mute: #8a8a8a; --line: #2a2a2a;
+  --brass: #ff8a4c; --steel: #d4b090; --reason: #b0a8a0; --fault: #ff8b7e; --ok: #c8d080; --chat-code-bg: #050505;
+}
+html[data-chat-theme="sand"] {
+  color-scheme: light;
+  --ink: #f6f0e6; --panel: #ebe3d4; --raise: #dfd4c2; --mist: #2a241c; --mute: #6e6558; --line: #d4c8b4;
+  --brass: #b85c38; --steel: #3d6b52; --reason: #5a564c; --fault: #c24b40; --ok: #3d7a48; --on-brass: #ffffff; --chat-code-bg: #f3ebe0;
+}
+html[data-chat-theme="frost"] {
+  color-scheme: light;
+  --ink: #f3f6f8; --panel: #e6eef2; --raise: #d7e2e8; --mist: #1a2428; --mute: #5c6c74; --line: #c8d4dc;
+  --brass: #2a7a8c; --steel: #3d6a80; --reason: #4e5a66; --fault: #c24b40; --ok: #2f7a48; --on-brass: #ffffff; --chat-code-bg: #eef4f6;
+}
+html[data-chat-theme="matcha"] {
+  color-scheme: light;
+  --ink: #f3f4ea; --panel: #e6ead8; --raise: #d8dec6; --mist: #1c2418; --mute: #5c6850; --line: #c8d0b4;
+  --brass: #4a6b32; --steel: #3d6a52; --reason: #4e5a46; --fault: #c24b40; --ok: #2f7a48; --on-brass: #ffffff; --chat-code-bg: #eef0e2;
+}
+html[data-chat-theme="ivory"] {
+  color-scheme: light;
+  --ink: #fffcf7; --panel: #f4efe6; --raise: #e8e0d4; --mist: #1c1a28; --mute: #5c5868; --line: #d8d0c4;
+  --brass: #3d4a9a; --steel: #3d6a80; --reason: #4e5a66; --fault: #c24b40; --ok: #2f7a48; --on-brass: #ffffff; --chat-code-bg: #faf6f0;
+}
+html[data-chat-scheme="light"] { --diff-add: #2c8a4b; --diff-del: #c8453b; --call-done: #2c8a4b; --call-fail: #c8453b; }
+html[data-chat-scheme="light"] { --status-live: #8a5a00; --status-run: #1f7a3a; --status-done: #0b7a55; --status-fail: #b8382e; --scrim: rgb(0 0 0 / 0.25); }
+html[data-chat-theme="custom"] { --sans: "Bricolage Grotesque", sans-serif; --mono: "Red Hat Mono", ui-monospace, monospace; }
+.chat-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  isolation: isolate;
+  contain: paint;
+}
+html:not([data-chat-backdrop]) .chat-scene,
+html[data-chat-backdrop="none"] .chat-scene,
+.chat-scene[hidden] { display: none !important; }
+.chat-scene [data-chat-scene-wash],
+.chat-scene [data-chat-scene-veil],
+.chat-scene [data-chat-scene-fx] {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.chat-scene [data-chat-scene-wash] {
+  inset: -18%;
+  opacity: var(--chat-backdrop-strength, 0.28);
+}
+.chat-scene [data-chat-scene-fx] {
+  width: 100%;
+  height: 100%;
+  opacity: calc(var(--chat-backdrop-strength, 0.28) * 1.25);
+}
+.chat-scene [data-chat-scene-fx][hidden] { display: none !important; }
+.chat-scene [data-chat-scene-veil] {
+  background:
+    radial-gradient(92% 78% at 50% 42%, transparent 42%, color-mix(in srgb, var(--ink) 32%, transparent) 100%);
+}
+/* Backdrops. Every scene is drawn by chat-backdrop.js into
+   [data-chat-scene-fx]; the veil adds a faint scanline pass and a vignette so
+   every backdrop reads as the same tube. Strength scales every layer. */
+.chat-scene[data-kind] [data-chat-scene-wash] { inset: 0; }
+.chat-scene[data-kind]:not([data-kind="none"]) [data-chat-scene-veil] {
+  background:
+    repeating-linear-gradient(180deg, color-mix(in srgb, var(--ink) 35%, transparent) 0 1px, transparent 1px 3px),
+    radial-gradient(110% 95% at 50% 50%, transparent 50%, color-mix(in srgb, var(--ink) 75%, transparent) 100%);
+}
+/* The art lives in the margins: every canvas scene thins out through the
+   centre reading column so it never sits at full strength behind text. */
+.chat-scene[data-kind] [data-chat-scene-fx] {
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.22) 30%, rgba(0, 0, 0, 0.22) 70%, #000 100%);
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.22) 30%, rgba(0, 0, 0, 0.22) 70%, #000 100%);
+}
+@media (max-width: 800px) {
+  .chat-scene[data-kind] [data-chat-scene-fx] {
+    -webkit-mask-image: linear-gradient(180deg, #000, rgba(0, 0, 0, 0.3) 35%, rgba(0, 0, 0, 0.3) 100%);
+    mask-image: linear-gradient(180deg, #000, rgba(0, 0, 0, 0.3) 35%, rgba(0, 0, 0, 0.3) 100%);
+  }
+}
+/* Per-scene weight, so one Intensity setting looks about as loud on each. */
+.chat-scene[data-kind] [data-chat-scene-fx] { --fx-gain: 1.25; opacity: calc(var(--chat-backdrop-strength, 0.28) * var(--fx-gain)); }
+/* Data-only wallpapers (engine.js stamps [data-wallpaper]) paint their own
+   ground, so they show strong and whole: Intensity 12–55 % maps to an
+   opacity of 0.57–1, with no centre mask and no veil. */
+.chat-scene[data-wallpaper] [data-chat-scene-fx] {
+  opacity: calc(0.45 + var(--chat-backdrop-strength, 0.28));
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.chat-scene[data-wallpaper][data-kind] [data-chat-scene-veil],
+.chat-scene[data-wallpaper] [data-chat-scene-wash] { background: none; }
+/* A custom backdrop (engine.js syncFrame) is the user's own document in a
+   sandboxed frame, shown like a wallpaper. */
+.chat-scene [data-chat-scene-frame] {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+  opacity: calc(0.45 + var(--chat-backdrop-strength, 0.28));
+}
+
+/* Reduced motion for the chat surface lives in app.css (travel off, status
+   spinners kept). Ambient scenes are decoration only: stop them entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-scene, .chat-scene * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

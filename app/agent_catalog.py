@@ -863,7 +863,7 @@ SCHEMAS = {
                         "description": "If true, return immediately. You are notified when it finishes. Do not poll.",
                     },
                     "host": _HOST,
-                    "cwd": {"type": "string", "description": "Child working directory; defaults to the parent's bound cwd, even when host is overridden. Specify the correct directory when changing hosts or resuming elsewhere."},
+                    "cwd": {"type": "string", "description": "Child working directory; defaults to the parent's bound cwd, even when host is overridden; a resumed child keeps its own. Specify the correct directory when changing hosts or resuming elsewhere."},
                     "task_id": {
                         "type": "string",
                         "description": (
@@ -875,7 +875,7 @@ SCHEMAS = {
                         "without rebinding host/cwd or changing type. A finished child keeps its transcript and "
                         "model, and keeps its type unless you pass subagent_type to re-type it (e.g. resume an "
                         "explore auditor as general-purpose so it can apply its own findings); host/cwd default "
-                        "to the current parent's bindings; pass them explicitly when needed. "
+                        "to the child's own; pass them to move it. "
                         "Pass model only to switch. On a follow-up, prompt (or scratch) is required; description is optional "
                         "and defaults to the child's label."
                         ),

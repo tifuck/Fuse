@@ -493,6 +493,17 @@ async def spawn(
             return "unknown host alias", {"name": "spawn_subagent", "status": "error", "error": "unknown host alias", "description": description}
         host_id = row["id"]
     explicit_cwd = str(args.get("cwd") or "").strip() if isinstance(args.get("cwd"), str) else ""
+    resume_from = args.get("task_id") if isinstance(args.get("task_id"), str) else None
+    if not resume_from and isinstance(args.get("resume_from"), str):
+        resume_from = args.get("resume_from")
+    if resume_from and not alias and not explicit_cwd:
+        # A finished child resumes on its own host and folder, not the
+        # parent's, reviewed like an explicit cwd.
+        prior = await asyncio.to_thread(chat_store.get_run, user["id"], resume_from)
+        prior_agent = ((prior or {}).get("request") or {}).get("agent") or {}
+        if prior and prior.get("status") not in chat_store.ACTIVE and prior_agent.get("bound_host_id") is not None:
+            host_id = prior_agent["bound_host_id"]
+            explicit_cwd = str(prior_agent.get("bound_cwd") or "")
     if explicit_cwd:
         cwd, cwd_error = await _review_child_cwd(user["id"], pagent, host_id, explicit_cwd, gate)
         if cwd_error:
@@ -510,9 +521,6 @@ async def spawn(
         # The child uses that host's own default working directory.
         cwd = ""
     background = bool(args.get("background"))
-    resume_from = args.get("task_id") if isinstance(args.get("task_id"), str) else None
-    if not resume_from and isinstance(args.get("resume_from"), str):
-        resume_from = args.get("resume_from")
     if resume_from and not description:
         existing_label = await asyncio.to_thread(chat_store.get_run, user["id"], resume_from)
         existing_agent = ((existing_label.get("request") or {}).get("agent") or {}) if existing_label else {}

@@ -1,5 +1,7 @@
 /* Console design: preserve import order. */
-/* The former shared chat-design.css layer (palettes stay shared there). */
+/* The former shared chat-design.css layer: its shared part (palettes, backdrop
+   scene), then this theme's copy of the rest. */
+@import url("../../../chat-design-shared.css");
 @import url("base/chat-design.css");
 @import url("design-001-tools.css");
 @import url("design-002-transcript.css");

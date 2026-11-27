@@ -15,9 +15,28 @@ function cue(name) {
   if (name && S.syncState === "live") window.fuseSound?.play(name, { event: true });
 }
 
+// The thread this tab shows, for the socket (app/chat_events.py): every other
+// thread's run.progress comes as a run.tick. A socket starts with it in its
+// address; this sends it again once the open thread changed.
+export function sendThreadView() {
+  const id = String(S.currentId || "");
+  if (S._syncThreadSent === id || !S.socket || S.socket.readyState !== WebSocket.OPEN) return;
+  try {
+    // With the subagent view as last sent: an older server reads a view
+    // without run_id as none.
+    S.socket.send(JSON.stringify({ type: "view", run_id: S._syncViewSent || null, thread_id: id }));
+    S._syncThreadSent = id;
+  } catch (_) {}
+}
+
 export function createStream(ctx) {
   const { agents, apply, composer, context, net, notices, perms, persist, picker, secrets, sidebar, status, traces, transcript, turns, ui } = ctx;
+  // Chats thread events named while the archive list was loading (loadArchive).
+  let archiveTouched = null;
+  // The run.tick that last reopened the socket (receiveEvent).
+  let tickReopened = 0;
     async function receiveEvent(event) {
+    sendThreadView();
     if (event.id <= S.cursor) return;
     // A gap replay (replayGap) resends events this view already handled. Only
     // the open thread's run events can be new to it; the rest would fire their
@@ -46,6 +65,7 @@ export function createStream(ctx) {
         apply.reconcileThread().catch(() => {});
       }
     } else if (event.type.startsWith("thread.")) {
+      archiveTouched?.add(payload.id || event.thread_id);
       if (S.renameSaving) await S.renameSaving.catch(() => {});
       if (event.type === "thread.deleted") {
         if (S.historyQuery) sidebar.queueSearch();
@@ -71,7 +91,14 @@ export function createStream(ctx) {
         if (event.thread_id === S.currentId && event.id > S.viewCursor) {
           await persist.flushSave().catch(() => {});
           if (event.thread_id === S.currentId && payload.revision > S.serverRevision) {
-            if (S.activeRun && !Array.isArray(payload.messages) && !payload.transcript_changed) {
+            if (payload.labels_only) {
+              // A rename, pin, archive, permission mode or memory switch: all
+              // of it is in this row; the transcript is as it was.
+              apply.acceptLabels(payload);
+              S.serverRevision = payload.revision;
+            } else if (S.sendingThread === event.thread_id) {
+              S.sendRaced = true;
+            } else if (S.activeRun && !Array.isArray(payload.messages) && !payload.transcript_changed) {
               S.serverRevision = payload.revision;
             } else {
               await apply.reconcileThread();
@@ -82,8 +109,15 @@ export function createStream(ctx) {
       sidebar.renderHistory();
     } else if (event.type === "recap.updated") {
       if (event.thread_id === S.currentId) {
-        if (!S.sending && !S.queuedTurns.length) S.dismissedRecapAnchors.get(S.currentId)?.delete(String(payload.anchor_id));
-        await apply.reconcileThread();
+        const anchor = String(payload.anchor_id);
+        if (!S.sending && !S.queuedTurns.length) S.dismissedRecapAnchors.get(S.currentId)?.delete(anchor);
+        // The event is the whole recap, as a snapshot attaches it; only one
+        // on a reply this view does not hold needs the thread.
+        if (S.messages.some((msg) => msg.id === anchor)) {
+          const recaps = S.threadRecaps.filter((row) => String(row.anchor_id) !== anchor).concat({ anchor_id: payload.anchor_id, text: payload.text });
+          S.threadRecaps = transcript.visibleRecaps({ id: S.currentId, recaps });
+          transcript.paintRecaps();
+        } else await apply.reconcileThread();
       }
     } else if (event.type === "recap.failed") {
       if (event.thread_id === S.currentId) picker.setHint("Could not generate a recap. Try /recap again.", true);
@@ -181,6 +215,19 @@ export function createStream(ctx) {
     } else if (event.thread_id === S.currentId && event.id > S.viewCursor && event.type.startsWith("run.")) {
       S.lastRunReceiptAt = Date.now();
       if (event.type === "run.started" || !S.activeRun || S.activeRun.id !== payload.run_id) {
+        // A turn sent from this view is in flight: its reply is the chat as of
+        // its run.started, and what this socket carried meanwhile is replayed
+        // from there once that reply lands (turns/send.js), so no read here.
+        if (S.sendingThread === event.thread_id) S.sendRaced = true;
+        else await apply.reconcileThread();
+      } else if (event.type === "run.tick") {
+        // Compacted before the socket learned this thread is open: reopen it
+        // here (once per event), and the patches come again whole.
+        if (tickReopened !== event.id) {
+          tickReopened = event.id;
+          connectSync(false, true);
+          return;
+        }
         await apply.reconcileThread();
       } else if (event.type === "run.progress") {
         // Applied while a message is being edited too: S.cursor moves past
@@ -233,6 +280,11 @@ export function createStream(ctx) {
       } else if (["run.completed", "run.cancelled", "run.failed", "run.interrupted"].includes(event.type)) {
         const msg = S.messages.find((item) => item.id === payload.message_id);
         if (msg && payload.message) Object.assign(msg, payload.message);
+        // Applied, this view is current at the event and the reconcile below
+        // is answered unchanged (a steered run's end keeps the thread's
+        // watermark ahead, so that one reads the thread); a reply this view
+        // lacks takes the full read.
+        const applied = Boolean(msg && payload.message);
         if (msg && Array.isArray(msg.permissions)) {
           msg.permissions.forEach((perm) => {
             if (perm.kind === "tool_permission" && perm.status === "pending") perm.status = "cancelled";
@@ -256,8 +308,10 @@ export function createStream(ctx) {
         }
         status.notifyTurnDone(event.thread_id, payload, event.type);
         if (payload.revision != null) S.serverRevision = payload.revision;
-        S.viewCursor = event.id;
-        S.threadWatermark = event.id;
+        if (applied) {
+          S.viewCursor = event.id;
+          S.threadWatermark = event.id;
+        }
         status.syncStatus();
         context.syncContextMeter();
         if (S.transcriptDirty && !S.streaming) await persist.flushSave().catch(() => {});
@@ -283,8 +337,26 @@ export function createStream(ctx) {
     return true;
   }
 
+    // The archive list loads beside the socket, so Send does not wait for it.
+    // It is read after the sync answered, never older than data.cursor; a
+    // chat a thread event named meanwhile keeps the row that event left.
+    function loadArchive() {
+    const touched = archiveTouched = new Set();
+    net.api("/chat/threads?archived=1").then((data) => {
+      if (archiveTouched !== touched) return;
+      archiveTouched = null;
+      S.archivedThreads = S.archivedThreads.filter((item) => touched.has(item.id))
+        .concat((data.archived || []).filter((item) => !touched.has(item.id)))
+        .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+      sidebar.noteServerRunning(S.archivedThreads);
+      // An archived chat opened first had no row for its title.
+      sidebar.syncTitle();
+      sidebar.renderHistory();
+    }).catch(() => {});
+  }
+
     // onHistory runs once the thread list of a resync is in, before the
-    // archive and the socket: the page's linked thread opens from there.
+    // socket: the page's linked thread opens from there.
     async function connectSync(resync = !S.syncInitialized, reopen = false, onHistory = null) {
     if (!resync && !reopen && net.isLive()) return;
     const epoch = ++S.syncEpoch;
@@ -299,7 +371,9 @@ export function createStream(ctx) {
       S.syncState = navigator.onLine ? "reconnecting" : "offline";
       S.syncLabel = navigator.onLine ? (S.reconnectAttempt ? "Disconnected" : "Reconnecting") : "Disconnected";
       status.syncStatus();
-      S.reconnectTimer = window.setTimeout(() => connectSync(resync), Math.min(30000, 700 * 2 ** Math.min(S.reconnectAttempt++, 6)) * (0.75 + Math.random() * 0.5));
+      // Once synced, a reconnect replays from S.cursor; a gap the server can
+      // no longer replay answers resync_required.
+      S.reconnectTimer = window.setTimeout(() => connectSync(S.syncInitialized ? false : resync), Math.min(30000, 700 * 2 ** Math.min(S.reconnectAttempt++, 6)) * (0.75 + Math.random() * 0.5));
     };
     try {
       if (resync) {
@@ -320,16 +394,9 @@ export function createStream(ctx) {
         if (S.historyQuery) sidebar.queueSearch();
         sidebar.renderHistory();
         if (onHistory) onHistory();
-        // The archive is fetched after the sync answered, so it is never older
-        // than data.cursor, and lands before the socket replays from there.
-        const archive = net.api("/chat/threads?archived=1");
-        archive.catch(() => {});
+        loadArchive();
         await apply.reconcileThread();
         if (epoch !== S.syncEpoch) return;
-        S.archivedThreads = (await archive).archived || [];
-        if (epoch !== S.syncEpoch) return;
-        sidebar.noteServerRunning(S.archivedThreads);
-        sidebar.renderHistory();
         // The socket must not start ahead of the thread snapshot's durable
         // cursor, or patches between the two would never be replayed.
         // Events this tab handled before the drop must not fire their side
@@ -343,6 +410,8 @@ export function createStream(ctx) {
       const url = new URL("/chat/events", location.href);
       url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("cursor", String(S.cursor));
+      S._syncThreadSent = String(S.currentId || "");
+      url.searchParams.set("thread", S._syncThreadSent);
       const ws = S.socket = new WebSocket(url);
       ws.onopen = () => {
         heartbeat();
@@ -350,6 +419,7 @@ export function createStream(ctx) {
         // coming for it (the new socket starts with no view).
         S._syncViewSent = null;
         net.sendSyncView(S.agentsOpen ? S.agentViewId : "");
+        sendThreadView();
       };
       const heartbeat = () => {
         window.clearTimeout(S.heartbeatTimer);
@@ -415,5 +485,6 @@ export function createStream(ctx) {
   return {
     connectSync,
     receiveEvent,
+    replayGap,
   };
 }

@@ -18,7 +18,7 @@ function secretsWindowHtml(rows) {
       return `<tr data-secrets-row="${row.id}">
         <td class="chat-secrets-tick"><input type="checkbox" data-secrets-check${row.plain ? "" : " checked"} aria-labelledby="${nameId}"></td>
         <td class="chat-secrets-name">${name}</td>
-        <td class="chat-secrets-value"><div>${esc(row.value)}</div>${warn}</td>
+        <td class="chat-secrets-value"><div class="chat-secrets-text">${esc(row.value)}</div>${warn}</td>
         <td class="chat-secrets-where">${host}<span>${esc(row.place)}</span></td>
       </tr>`;
     }).join("");

@@ -54,7 +54,9 @@ async def chat_page(request: Request):
             for group in available
         ]
         return {
-            "skills_bundle": skills.list_bundle(user["id"]),
+            # The Skills sheet is hidden until opened; static/skills.js reads
+            # the full list from /skills/api then (the slash menu has chat_config.skills).
+            "skills_bundle": {"lazy": True},
             "chat_config": {
                 "families": families,
                 "locked": [group["title"] for group in locked],
@@ -189,14 +191,31 @@ def _chat_public_thread(thread, user=None, pack=False, pk=None):
         if pk is None:
             pk = chats.resolve_thread_pk(user["id"], public["id"])
         public["messages"] = chat_images.link_attachments(pk, public["messages"])
-    if pack:
-        public["messages"] = chats.pack_segment_text(public.get("messages"))
+    if pack and "messages" in public:
+        public["messages"] = chats.pack_segment_text(public["messages"])
         public["segments_packed"] = True
     return public
 
 
-def _public_thread_json(thread, user=None, status_code=200):
-    return _json(_chat_public_thread(thread, user), status_code=status_code)
+def _public_thread_json(thread, user=None, status_code=200, pack=False):
+    return _json(_chat_public_thread(thread, user, pack), status_code=status_code)
+
+
+def _queued_tail(thread, params):
+    """A queued turn's reply as a turn's (?tail=1): only the turn's messages,
+    when the page says what it holds (have messages at revision base, the
+    last one after) and that turn is the only write since."""
+    try:
+        have, base = int(params.get("have", "")), int(params.get("base", ""))
+    except ValueError:
+        return thread
+    messages = thread["messages"]
+    if have < 0 or thread["revision"] != base + 1 or len(messages) != have + 2:
+        return thread
+    after = messages[have - 1]["id"] if have else None
+    if have and after != params.get("after"):
+        return thread
+    return {**thread, "messages": messages[have:], "messages_from": have, "base_revision": base, "after_id": after}
 
 
 @router.post("/chat/threads/{thread_id}/turns")
@@ -221,6 +240,10 @@ async def chat_turn(request: Request, thread_id: str):
     }:
         raise HTTPException(422, "Unsupported turn fields")
     pk = await asyncio.to_thread(_chat_thread_pk, user, thread_id)
+    # ?tail=1: the page splices the turn's own messages into the transcript it
+    # holds (static/chat/turns/send.js); without it the reply is the whole
+    # thread, read once the run has started.
+    tail = request.query_params.get("tail") == "1"
     try:
         attachments = await asyncio.to_thread(chat_images.restore_attachments, user["id"], raw.get("attachments"))
         result = await asyncio.to_thread(
@@ -238,22 +261,23 @@ async def chat_turn(request: Request, thread_id: str):
             auto_title=True,
             invoke_skill=raw.get("invoke_skill"),
             replace_from=raw.get("replace_from"),
+            reply="tail" if tail else None,
         )
     except chats.ChatValidationError as exc:
         raise _chat_validation_error(exc) from None
-    if result.get("thread") is None:
-        raise HTTPException(404, "Chat not found")
     if result["run"]:
         await chat_runs.start(request, user, result["run"])
         # Claude Code names a session from its first prompt while the turn
         # runs; the sweep skips threads that already have a title.
         chat_titles.notify(pk)
-    # Like the snapshot (?pack=1): the reply is the whole transcript.
+    # Packed like the snapshot (?pack=1).
     pack = request.query_params.get("pack") == "1"
 
     def _reply():
-        thread = _chat_public_thread(result["thread"], user, pack, pk) if result["thread"] else None
-        return _json({**result, "thread": thread, "run": _chat_public_run(result["run"])},
+        thread = result["thread"] or chats.get_thread(user["id"], pk)
+        if thread is None:
+            raise HTTPException(404, "Chat not found")
+        return _json({**result, "thread": _chat_public_thread(thread, user, pack, pk), "run": _chat_public_run(result["run"])},
                      headers={"Cache-Control": "no-store"})
 
     return await asyncio.to_thread(_reply)
@@ -282,6 +306,8 @@ async def chat_queue_put(request: Request, thread_id: str):
 
     def _reply():
         thread = chats.get_thread(user["id"], pk) if sent else None
+        if thread:
+            thread = _queued_tail(thread, request.query_params)
         return _json({"ok": True, "sent": sent, "held": held,
                       "thread": _chat_public_thread(thread, user, pack, pk) if thread else None},
                      headers={"Cache-Control": "no-store"})
@@ -653,17 +679,17 @@ async def chat_thread_get(request: Request, thread_id: str):
     stream = request.query_params.get("stream") == "1"
 
     def _load():
+        # Opening a thread is what clears its finished-run badge; get_thread
+        # clears it before it builds the view, unchanged answers included.
         thread = chats.get_thread(
             user["id"], thread_id,
-            observed_cursor=observed, observed_thread_cursor=observed_thread, queued=queued,
+            observed_cursor=observed, observed_thread_cursor=observed_thread, queued=queued, mark_read=True,
         )
         if not thread:
             raise HTTPException(404, "Chat not found")
         if thread.get("unchanged"):
             return JSONResponse(thread, headers={"Cache-Control": "no-store"})
-        # Opening a thread is what clears its finished-run badge. Only full views
-        # reach here: an unchanged short-circuit means the finishing revision was
-        # already delivered, so the flag was cleared by that earlier view.
+        # A turn that finished while the view was being built.
         if thread.get("unread"):
             chats.mark_thread_read(user["id"], thread_id)
             thread["unread"] = False
@@ -869,14 +895,24 @@ async def chat_thread_jobs(request: Request, thread_id: str):
         return err
     from .. import command_jobs
 
+    # What the page holds already: the finished jobs it names (done) are not
+    # sent again, nor a running job's output up to the characters it has
+    # (known, id:output_chars).
+    done = set(request.query_params.get("done", "").split(",")[:400])
+    known = {}
+    for part in request.query_params.get("known", "").split(",")[:200]:
+        ident, _, chars = part.partition(":")
+        if ident and chars.isdigit():
+            known[ident] = int(chars)
+
     def _load():
         # Polled every few seconds while the agents pane is open: keep the
         # database reads off the event loop that also drives live streams.
         pk = _chat_thread_pk(user, thread_id)
-        jobs = command_jobs.list_thread_jobs(user["id"], pk)
+        jobs = command_jobs.list_thread_jobs(user["id"], pk, known)
         by_id = {item["id"]: item for item in command_jobs.recent_terminal_jobs(user["id"], pk)}
         by_id.update((item["id"], item) for item in chat_store.historical_command_jobs(user["id"], pk))
-        return jobs, list(by_id.values())
+        return jobs, [item for ident, item in by_id.items() if ident not in done]
 
     jobs, recent = await asyncio.to_thread(_load)
     return JSONResponse(
@@ -1068,7 +1104,8 @@ async def chat_thread_patch(request: Request, thread_id: str):
             "auto_permissions user=%s thread=%s wanted=%s stored=%s",
             user["id"], thread_id, kwargs["auto_permissions"], thread.get("auto_permissions"),
         )
-    return await asyncio.to_thread(_public_thread_json, thread, user)
+    # Packed like the snapshot (?pack=1) when the save sent a transcript.
+    return await asyncio.to_thread(_public_thread_json, thread, user, pack=request.query_params.get("pack") == "1")
 
 
 @router.post("/chat/threads/{thread_id}/title")

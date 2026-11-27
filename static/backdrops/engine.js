@@ -10,7 +10,7 @@ function makeState(ctx, k) {
 }
 
 // —— Runner ——
-const run = { kind: "", canvas: null, ctx: null, raf: 0, timer: 0, last: 0, acc: 0, t: 0, state: null, listening: false, shown: true };
+const run = { kind: "", canvas: null, ctx: null, raf: 0, timer: 0, last: 0, acc: 0, t: 0, state: null, listening: false, shown: true, w: 0, h: 0 };
 // The timer wakes this much before a scene frame is due, so the display
 // frame that follows it is the one that draws.
 const EARLY = 0.004;
@@ -36,12 +36,17 @@ function next() {
   else wake();
 }
 
-function measure() {
+// The canvas covers the window, so its size is read only on a start or a
+// resize (fresh): read every frame, it laid the page out each time.
+function measure(fresh) {
   const s = run.state;
   if (!s || !run.canvas) return false;
   const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-  const w = run.canvas.clientWidth || window.innerWidth;
-  const h = run.canvas.clientHeight || window.innerHeight;
+  if (fresh || !run.w) {
+    run.w = run.canvas.clientWidth || window.innerWidth;
+    run.h = run.canvas.clientHeight || window.innerHeight;
+  }
+  const { w, h } = run;
   if (w < 2 || h < 2) return false;
   const bw = Math.round(w * dpr);
   const bh = Math.round(h * dpr);
@@ -81,7 +86,7 @@ function start() {
   engine.setup?.(run.state);
   // Start mid-flight so the first frame already looks settled.
   run.t = 40 + Math.random() * 60;
-  if (!measure()) return;
+  if (!measure(true)) return;
   // Reduced motion holds one frame, so it should be a finished one.
   engine.warm?.(run.state, run.t, reduce.matches);
   engine.draw(run.state, run.t, 1 / engine.fps);
@@ -129,7 +134,7 @@ function listen() {
     if (resizeFrame || !run.state) return;
     resizeFrame = requestAnimationFrame(() => {
       resizeFrame = 0;
-      if (measure() && reduce.matches && SCENES[run.kind]) SCENES[run.kind].draw(run.state, run.t, 0.1);
+      if (measure(true) && reduce.matches && SCENES[run.kind]) SCENES[run.kind].draw(run.state, run.t, 0.1);
     });
   });
   reduce.addEventListener?.("change", () => { if (SCENES[run.kind] && run.state) start(); });
@@ -179,7 +184,7 @@ function framePreview(el, on) {
 const previews = new Map();
 let observer = null;
 let seen = null;
-const hover = { el: null, raf: 0, last: 0, acc: 0 };
+const hover = { el: null, raf: 0, timer: 0, last: 0, acc: 0 };
 
 function paintPreview(el) {
   const kind = el.dataset.kind;
@@ -208,28 +213,39 @@ function paintPreview(el) {
   previews.set(el, { s, t, engine });
 }
 
+// Like the scene, a hovered card sleeps between its frames. It stops once
+// the card is not rendered (the sheet closed under the pointer).
 function hoverFrame(now) {
   hover.raf = 0;
   const entry = hover.el && previews.get(hover.el);
   if (!entry) return;
+  if (hover.el.checkVisibility?.() === false) {
+    hover.el = null;
+    return;
+  }
   const sec = now / 1000;
   const dt = hover.last ? Math.min(0.25, sec - hover.last) : 0;
   hover.last = sec;
   hover.acc += dt;
   const budget = 1 / entry.engine.fps;
-  if (hover.acc >= budget) {
+  if (hover.acc >= budget - EARLY) {
     const step = Math.max(hover.acc, budget);
     hover.acc = 0;
     entry.t += step;
     entry.engine.draw(entry.s, entry.t, step);
   }
-  hover.raf = requestAnimationFrame(hoverFrame);
+  hover.timer = setTimeout(() => {
+    hover.timer = 0;
+    hover.raf = requestAnimationFrame(hoverFrame);
+  }, (budget - hover.acc - EARLY) * 1000);
 }
 
 function hoverPreview(el) {
   if (hover.el === el) return;
-  if (hover.raf) cancelAnimationFrame(hover.raf);
+  cancelAnimationFrame(hover.raf);
+  clearTimeout(hover.timer);
   hover.raf = 0;
+  hover.timer = 0;
   hover.el = el;
   hover.last = 0;
   hover.acc = 0;
@@ -260,6 +276,10 @@ export function scanPreviews(root = document) {
       const card = event.target.closest?.(".ap-backdrop");
       hoverPreview(card ? card.querySelector(".chat-backdrop-preview[data-kind]") : null);
     });
+    // Out of the window: no pointerover follows.
+    document.addEventListener("pointerout", (event) => {
+      if (!event.relatedTarget) hoverPreview(null);
+    });
   }
   for (const el of els) {
     if (isCustom(el.dataset.kind) && !el.dataset.fxObserved) {
@@ -282,12 +302,17 @@ export function scanPreviews(root = document) {
 }
 
 // Only a theme change alters the scene's colors; Intensity, text size and
-// the choice itself leave them as they are.
+// the choice itself leave them as they are. The theme is <html>'s
+// data-chat-theme plus a custom one's inline colors: those are compared on
+// every call, the computed colors (a restyle of the page) once they change.
+const INK = ["--ink", "--mist", "--mute", "--brass", "--steel"];
 let ink = "";
+let inkKey = "";
 function themeInk() {
   const style = getComputedStyle(html);
-  return ["--ink", "--mist", "--mute", "--brass", "--steel"].map((p) => style.getPropertyValue(p).trim()).join();
+  return INK.map((p) => style.getPropertyValue(p).trim()).join();
 }
+const themeKey = () => [html.dataset.chatTheme, ...INK.map((p) => html.style.getPropertyValue(p))].join();
 
 function repaintPreviews() {
   for (const el of previews.keys()) {
@@ -304,15 +329,19 @@ let settle = 0;
 
 // chat-appearance.js calls this on every appearance change.
 export function sync(scene, kind) {
-  const next = themeInk();
-  if (ink && next !== ink) {
+  const key = themeKey();
+  if (!ink) ink = themeInk();
+  else if (key !== inkKey) {
     clearTimeout(settle);
     settle = setTimeout(() => {
+      const next = themeInk();
+      if (next === ink) return;
+      ink = next;
       repaintPreviews();
       if (run.state) start();
     }, SETTLE_MS);
   }
-  ink = next;
+  inkKey = key;
   const canvas = scene && scene.querySelector("canvas[data-chat-scene-fx]");
   const animated = Boolean(canvas && !scene.hidden && hasScene(kind));
   const same = animated && run.state && run.kind === kind && run.canvas === canvas;
