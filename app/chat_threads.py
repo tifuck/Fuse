@@ -579,16 +579,21 @@ def search_thread_lists(user_id: int, q: str) -> tuple[list[dict], list[dict]]:
         out[1 if row["archived"] else 0].append(view)
     return out
 def get_thread(user_id: int, thread_id, *, observed_cursor: int | None = None, observed_thread_cursor: int | None = None,
-               queued=()):
+               queued=(), mark_read=False):
+    """mark_read: the page is showing the thread, which clears its finished-run
+    badge. That write comes first, so a full view built after it already covers
+    its thread.updated and the page has nothing to fetch again for it."""
     from . import chat_checkpoint, chat_store
 
     # Before the transaction's first read; see state_cursor_snapshot.
     stamps = chat_checkpoint.state_cursor_snapshot(user_id)
+    unchanged = None
     with db.tx() as conn:
         conn.execute("BEGIN")
         pk = resolve_thread_pk(user_id, thread_id, conn)
         if pk is None:
             return None
+        unread = mark_read and bool(conn.execute("SELECT unread FROM chat_threads WHERE id=?", (pk,)).fetchone()["unread"])
         # Check inside the same read transaction as the snapshot. A revision
         # alone is insufficient: live progress advances the event cursor without
         # changing the thread revision. Resolve ownership even on a cache hit.
@@ -598,13 +603,20 @@ def get_thread(user_id: int, thread_id, *, observed_cursor: int | None = None, o
         if observed_thread_cursor is not None:
             watermark = chat_store.thread_event_watermark(user_id, pk)
             if watermark is not None and int(observed_thread_cursor) == watermark:
-                return {"unchanged": True, "event_cursor": watermark, "thread_cursor": watermark}
-        if observed_cursor is not None:
+                unchanged = {"unchanged": True, "event_cursor": watermark, "thread_cursor": watermark}
+        if unchanged is None and observed_cursor is not None:
             high = conn.execute("SELECT cursor FROM chat_event_cursors WHERE user_id=?", (user_id,)).fetchone()
             cursor = int(high[0]) if high else 0
             if cursor == observed_cursor:
-                return {"unchanged": True, "event_cursor": cursor}
-        return chat_store.thread_view(conn, user_id, pk, queued=queued, stamps=stamps)
+                unchanged = {"unchanged": True, "event_cursor": cursor}
+        if unchanged is None and not unread:
+            return chat_store.thread_view(conn, user_id, pk, queued=queued, stamps=stamps)
+    # The page that saw a turn finish here reconciles, and that read is
+    # answered unchanged: it still reads the badge. The read leaves the
+    # thread's watermark alone, so other tabs' reads stay unchanged too.
+    if unread:
+        mark_thread_read(user_id, pk)
+    return unchanged or get_thread(user_id, thread_id, queued=queued)
 def create_thread(
     user_id: int,
     *,
@@ -785,7 +797,7 @@ def update_thread(
             # A save that sent no transcript gets none back: the page keeps
             # the list row and settings, and a full view is megabytes.
             result = _saved_view(conn, user_id, pk)
-            store.thread_event(conn, user_id, pk)
+            store.thread_event(conn, user_id, pk, labels_only=all(value is None for value in (model, context, tools, reasoning_effort)))
             # The receipt remember() keeps for a full view, so a retry is
             # answered with the thread as it is now.
             store.remember(conn, user_id, command_id, fingerprint, {chat_tx._VIEW_RECEIPT: result["id"]})
@@ -893,7 +905,7 @@ def mark_thread_read(user_id: int, thread_id) -> bool:
                 if row is None or not row["unread"]:
                     return False
                 conn.execute("UPDATE chat_threads SET unread=0 WHERE id=? AND user_id=?", (pk, user_id))
-                store.thread_event(conn, user_id, pk)
+                store.thread_event(conn, user_id, pk, watermark=False)
             return True
         except Exception as exc:
             if attempt == _MARK_READ_ATTEMPTS or not is_lock_conflict(exc):

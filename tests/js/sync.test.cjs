@@ -275,28 +275,72 @@ test('a reconcile that only confirms the view joins the identical read in flight
   assert.equal(replies.length, 4, 'a finished read is not reused');
 });
 
-test('the first sync opens the linked thread from the history and does not refire what the history holds', async () => {
+test('the first sync opens the linked thread from the history and the socket beside the archive, and does not refire what the history holds', async () => {
   global.WebSocket = class { constructor(url) { this.url = String(url); } close() {} send() {} };
-  baseState({ currentId: '', cursor: 0, viewCursor: 0, socket: null, HEARTBEAT_MS: 35000, reconnectAttempt: 0, syncEpoch: 0, syncInitialized: false });
+  baseState({ currentId: '', cursor: 0, viewCursor: 0, socket: null, HEARTBEAT_MS: 35000, reconnectAttempt: 0, syncEpoch: 0, syncInitialized: false,
+    archivedThreads: [{ id: 'stale', revision: 1, updated_at: '1' }] });
   const calls = {};
   let archive;
   const routes = { '/chat/sync': async () => ({ cursor: 100, threads: [], projects: [] }),
     '/chat/threads?archived=1': () => new Promise((resolve) => { archive = resolve; }) };
-  const stream = makeStream(calls, {}, { net: stub({ api: (path) => routes[path](), isLive: () => true }) });
+  const drop = (id) => { S.archivedThreads = S.archivedThreads.filter((item) => item.id !== id); };
+  const sidebar = stub({ threadById: () => null, resetSearchLists: noop, threadGone: drop,
+    upsertLocal: (row) => { drop(row.id); S.archivedThreads.push(row); } });
+  const stream = makeStream(calls, {}, { net: stub({ api: (path) => routes[path](), isLive: () => true }), sidebar });
   let opened = 0;
-  const syncing = stream.connectSync(true, false, () => { opened += 1; });
-  await tick();
-  assert.equal(opened, 1, 'the history is in: the thread opens while the archive loads');
-  assert.equal(S.socket, null, 'the socket still waits for the archive');
   // The thread's snapshot was taken before the sync answered.
-  Object.assign(S, { currentId: 't', viewCursor: 90 });
-  archive({ archived: [] });
-  await syncing;
-  assert.equal(new URL(S.socket.url).searchParams.get('cursor'), '90', 'the socket replays from the snapshot cursor');
+  await stream.connectSync(true, false, () => { opened += 1; Object.assign(S, { currentId: 't', viewCursor: 90 }); });
+  assert.equal(opened, 1, 'the history is in: the thread opens');
+  assert.ok(archive, 'the archive is still loading');
+  const socket = new URL(S.socket.url);
+  assert.equal(socket.searchParams.get('cursor'), '90', 'the socket replays from the snapshot cursor');
+  assert.equal(socket.searchParams.get('thread'), 't', 'and names the thread it shows');
   await stream.receiveEvent({ id: 95, type: 'run.completed', thread_id: 'other', payload: { run_id: 'x' } });
   assert.equal(calls.notify, undefined, 'the history already showed that run as finished');
   await stream.receiveEvent({ id: 101, type: 'run.completed', thread_id: 'other', payload: { run_id: 'y' } });
   assert.equal(calls.notify, 1);
+  // Events the socket applied before the archive landed keep what they left.
+  await stream.receiveEvent({ id: 102, type: 'thread.updated', thread_id: 'mine', payload: { id: 'mine', revision: 3, archived: true, updated_at: '4' } });
+  await stream.receiveEvent({ id: 103, type: 'thread.deleted', thread_id: 'gone', payload: { id: 'gone' } });
+  archive({ archived: [{ id: 'gone', revision: 1, updated_at: '2' }, { id: 'mine', revision: 2, updated_at: '2' }, { id: 'old', revision: 1, updated_at: '3' }] });
+  await tick();
+  assert.deepEqual(S.archivedThreads.map((item) => [item.id, item.revision]), [['mine', 3], ['old', 1]]);
+});
+
+test('a turn end the view applied claims its event; a label change and a recap need no thread read', async () => {
+  baseState({ messages: [{ id: 'u', role: 'user', content: 'Hi' }, { id: 'm', role: 'assistant', content: 'Hel' }],
+    activeRun: { id: 'r', message_id: 'm', status: 'running' }, cursor: 10, viewCursor: 10, threadWatermark: 10,
+    threadRecaps: [], dismissedRecapAnchors: new Map() });
+  const calls = {};
+  const stream = makeStream(calls, { acceptLabels: (row) => { calls.labels = row.title; } }, {
+    transcript: stub({ captureThreadViewport: () => ({}), visibleRecaps: (data) => data.recaps, paintRecaps: () => { calls.recaps = (calls.recaps || 0) + 1; } }),
+  });
+  await stream.receiveEvent({ id: 11, type: 'run.completed', thread_id: 't', payload: { run_id: 'r', message_id: 'm', message: { content: 'Hello' }, revision: 4 } });
+  assert.equal(S.messages[1].content, 'Hello');
+  assert.deepEqual([S.viewCursor, S.threadWatermark, S.serverRevision, calls.reconcile], [11, 11, 4, 1], 'its reconcile is answered unchanged');
+  await stream.receiveEvent({ id: 12, type: 'thread.updated', thread_id: 't', payload: { id: 't', revision: 5, title: 'Renamed', labels_only: true } });
+  assert.deepEqual([S.serverRevision, calls.labels, calls.reconcile], [5, 'Renamed', 1]);
+  await stream.receiveEvent({ id: 13, type: 'recap.updated', thread_id: 't', payload: { anchor_id: 'm', text: 'What happened' } });
+  assert.deepEqual(S.threadRecaps, [{ anchor_id: 'm', text: 'What happened' }]);
+  assert.deepEqual([calls.recaps, calls.reconcile], [1, 1]);
+});
+
+test('a compacted patch of the open thread reopens the socket there once, then reads the thread', async () => {
+  const sockets = [];
+  global.WebSocket = class { constructor(url) { this.url = String(url); sockets.push(this); } close() {} send() {} };
+  baseState({ messages: [{ id: 'm', role: 'assistant', content: 'Hel' }], cursor: 90, viewCursor: 80, syncInitialized: true, socket: null,
+    activeRun: { id: 'r', message_id: 'm', status: 'running' }, HEARTBEAT_MS: 35000, reconnectAttempt: 0, syncEpoch: 0 });
+  const calls = {};
+  const stream = makeStream(calls);
+  const tick91 = { id: 91, type: 'run.tick', thread_id: 't', payload: { run_id: 'r' } };
+  await stream.receiveEvent(tick91);
+  assert.equal(sockets.length, 1, 'the socket reopens');
+  const url = new URL(sockets[0].url);
+  assert.deepEqual([url.searchParams.get('cursor'), url.searchParams.get('thread'), S.cursor], ['90', 't', 90], 'at this event, for this thread');
+  await stream.receiveEvent(tick91);
+  assert.deepEqual([sockets.length, calls.reconcile, S.cursor], [1, 1, 91], 'compacted again: the snapshot instead');
+  await stream.receiveEvent({ id: 92, type: 'run.tick', thread_id: 'other', payload: { run_id: 'x' } });
+  assert.deepEqual([sockets.length, calls.reconcile, S.cursor], [1, 1, 92], 'another thread\'s tick is only counted');
 });
 
 test('a thread event that cannot change a hit row leaves the search to its slow refresh', async () => {

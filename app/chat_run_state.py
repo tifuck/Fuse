@@ -1290,7 +1290,12 @@ def finish_run(run_id, message, status):
             payload["settled"] = chat_recaps._settled(conn, row["user_id"], row["thread_id"])
         chat_tx.event(conn, row["user_id"], "run." + status, row["thread_id"], payload)
         if thread:
-            chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
+            # Unsteered, the run event carries this write's transcript change
+            # and the row adds only sidebar flags: the page that applied the run
+            # event reconciles against an unchanged watermark. A steer's parts
+            # are inserted or dropped here (_project_thread_messages), which the
+            # run event does not carry: that reconcile must read the thread.
+            chat_tx.thread_event(conn, row["user_id"], row["thread_id"], watermark=bool(agent.get("display_parts")))
 
 
 def _provider_messages(conn, run_id):

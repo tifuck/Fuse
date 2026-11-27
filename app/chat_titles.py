@@ -528,7 +528,15 @@ def apply_generated_title(user_id, thread_id, title, placeholder="", *, token=No
         )
         if not cur.rowcount:
             return None
-        return chat_views.publish_thread_view(conn, user_id, thread_id)
+        return _publish_title(conn, user_id, thread_id)
+
+
+def _publish_title(conn, user_id, thread_id):
+    """publish_thread_view's order, view then event, with the event marked
+    labels_only: the title is all that changed."""
+    view = chat_views.thread_view(conn, user_id, thread_id)
+    chat_tx.thread_event(conn, user_id, thread_id, labels_only=True)
+    return view
 
 
 def apply_regenerated_title(user_id, thread_id, title, *, token=None):
@@ -562,7 +570,7 @@ def apply_regenerated_title(user_id, thread_id, title, *, token=None):
         )
         if not cur.rowcount:
             return None
-        return chat_views.publish_thread_view(conn, user_id, pk)
+        return _publish_title(conn, user_id, pk)
 
 
 def title_regen_failed(user_id, thread_id):
