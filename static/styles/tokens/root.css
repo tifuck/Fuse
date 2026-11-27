@@ -71,4 +71,8 @@
 @property --chat-history { syntax: "*"; inherits: false; }
 @property --chat-artifact { syntax: "*"; inherits: false; }
 .chat > .chat-history { --chat-history: inherit; }
+/* The live status line's colors (chat-activity.css; the themes' copies on
+   /chat), registered here because /chat does not load that chunk. */
+@property --status-ink { syntax: "<color>"; inherits: true; initial-value: #8a8a8a; }
+@property --status-gleam { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
 

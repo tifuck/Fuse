@@ -90,10 +90,8 @@
   line-height: 1.4;
 }
 /* Live status line (main dock + subagent dock). The dock's data-phase picks
-   a tint and a tempo; registered colors let a phase change cross-fade the
-   shimmer instead of snapping. */
-@property --status-ink { syntax: "<color>"; inherits: true; initial-value: #8a8a8a; }
-@property --status-gleam { syntax: "<color>"; inherits: true; initial-value: #ffffff; }
+   a tint and a tempo; registered colors (tokens/root.css) let a phase change
+   cross-fade the shimmer instead of snapping. */
 :where(html:not(.is-chat-root)) :is(.chat-live-dock, .chat-agent-live-dock) {
   --phase-tint: var(--mist);
   --status-tempo: 2.4s;
