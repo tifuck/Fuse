@@ -681,6 +681,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     &.dk-art-full .chat-artifact { border-left: 0; }
     &.dk-art-full .dk-art-chatbtn { display: inline-flex; }
     &.dk-art-full > .chat-stage {
+      --dk-side-w: inherit;
       position: fixed;
       top: 0;
       bottom: 0;
