@@ -17,8 +17,9 @@ import time
 from dataclasses import dataclass, field
 
 from ..chat_prompts import _text_of
+from ..chat_schema import TOOL_OUTPUT_MAX
 from ..chat_tools import ARTIFACT_TOOL_IDS
-from ..code_mode import MUTATING, subject
+from ..code_mode import KEEP_S, MUTATING, subject
 
 from .parsing import _native_reasoning
 
@@ -334,9 +335,9 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
 
 
 # The other way round. A run_code call that only passes one call's result
-# through (one call, WRAP_LINES lines of code or fewer) is a slower direct
-# call (one that does not use sh also hides a command's exit code), and a
-# model copies its own history:
+# through (one call, WRAP_LINES lines of code or fewer, nothing done to the
+# result) is a slower direct call (one that returns a command's .output also
+# hides its exit code), and a model copies its own history:
 # in the tool-choice eval (scripts/qa/tool_choice.py) one such call was enough
 # for most later steps to be another. So the first one gets a tip, and so does
 # each one after it, WRAP_TIPS times a turn at most; that cost no batching in
@@ -348,6 +349,12 @@ WRAP_TIP_AFTER = 1
 WRAP_TIPS = 10
 WRAP_LINES = 3
 _SH = re.compile(r"\bsh\s*\(")
+_STRINGS = re.compile(r"'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`")
+# Code that works on the result: a method or property other than a command's
+# .output (.slice, .split, .length, JSON.parse, ...), or a comparison. Arrows
+# and spreads are not; console.log only shows it.
+_WORKS = re.compile(r"(?<!console)(?<!\.)\.(?!output\b)[A-Za-z_$]|[=!]==?|(?<!=)[<>]")
+_OUTPUT = re.compile(r"\.output\b")
 
 
 def wrap_tip(jobs: list[ToolJob], state: tuple[int, int] = (0, 0)) -> tuple[tuple[int, int], str]:
@@ -367,13 +374,15 @@ def wrap_tip(jobs: list[ToolJob], state: tuple[int, int] = (0, 0)) -> tuple[tupl
         if j.name != "run_code" or j.parent or j.trace.get("status") != "done" or not calls:
             continue
         code = [line for line in str(j.trace.get("code") or "").splitlines() if line.strip()]
-        tool = calls[0] if len(calls) == 1 and len(code) <= WRAP_LINES else ""
-        sh = any(_SH.search(line) for line in code)
+        bare = _STRINGS.sub("''", "\n".join(code))
+        tool = calls[0] if len(calls) == 1 and len(code) <= WRAP_LINES and not _WORKS.search(bare) else ""
+        sh = bool(_SH.search(bare))
+        output = bool(_OUTPUT.search(bare))
         streak = streak + 1 if tool else 0
     if not tool or streak < WRAP_TIP_AFTER or given >= WRAP_TIPS:
         return (streak, given), ""
-    # A failed sh shows the exit code; one that worked had exit 0.
-    hides = " and hides the command's exit code" if tool == "run_terminal_command" and not sh else ""
+    # A failed sh shows the exit code; one that worked had exit 0. The whole result object carries it too.
+    hides = " and hides the command's exit code" if tool == "run_terminal_command" and not sh and output else ""
     which = "Your last run_code call" if streak == 1 else f"Your last {streak} run_code calls each"
     return (streak, given + 1), (
         f"[Fuse] {which} wrapped one {tool} call and returned its result unchanged. "
@@ -469,10 +478,20 @@ def _code_clip(text: str, result_id: str = "") -> str:
     cut = TOOL_RESULT_CHARS - 400 - len(calls)
     # read_result counts UTF-16 units, as the code's .length does.
     offset = len(text[:cut].encode("utf-16-le", "surrogatepass")) // 2
-    rest = (f" Read the rest in run_code with `await read_result(\"{result_id}\", {{offset: {offset}}})` (kept 30 "
-            "minutes), or return a narrower result." if result_id else " Return a narrower result.")
+    rest = (f" Read the rest in run_code with `await read_result(\"{result_id}\", {{offset: {offset}}})` (kept "
+            f"{KEEP_S // 60} minutes), or return a narrower result." if result_id else " Return a narrower result.")
     return text[:cut] + (f"\n[Fuse: result cut at {cut} of {len(text)} characters. The code's calls already ran, so do "
                          f"not run its edits or commands again.{rest}]") + calls
+
+
+def _keep_calls_tail(text: str, limit: int) -> str:
+    """A run_code result cut to limit for its row, keeping its closing
+    "[Fuse: N calls ...]" lines, which the views count its calls from."""
+    if len(text) <= limit:
+        return text
+    tail = _CALLS_TAIL.search(text)
+    calls = tail.group(0) if tail else ""
+    return text[:limit - len(calls)] + calls
 
 
 def _interrupted(job: ToolJob) -> str:
@@ -691,6 +710,8 @@ def _running_event(job: ToolJob) -> dict:
             event["include"] = include[:200]
         if isinstance(parsed.get("background"), bool):
             event["background"] = parsed["background"]
+        if job.name == "run_code" and isinstance(parsed.get("code"), str):
+            event["code"] = parsed["code"][:TOOL_OUTPUT_MAX]
         # The deadline the row names, known before the job exists. A foreground
         # shell's stored timeout is its wait plus the background handoff, so the
         # row shows the wait — the thing that expires next.
