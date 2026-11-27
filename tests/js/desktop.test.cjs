@@ -177,5 +177,8 @@ test('a script row splits what the model got from its source and counts its call
     const page = codeRunParts({ output: '3\n[Fuse: 2 calls: grep×2]\n[Fuse: 1 call: read_result×1]', code: 'return await read_result("r1");' });
     assert.deepEqual(page, { result: '3\n[Fuse: 2 calls: grep×2]', code: 'return await read_result("r1");', calls: [['read_result', 1]] },
       `${view}: a kept page holding an earlier run's calls line counts this run's`);
+    const { consoleLineCount } = (await import(`../../static/themes/${view}/tool-formatting.js`)).create({ looksLikeDiff: () => false });
+    assert.equal(consoleLineCount({ name: 'read_file', output: 'a\nb\nc', truncated: true, output_lines: 2000 }), 2000,
+      `${view}: a read whose stored text was cut counts all it read`);
   }
 });

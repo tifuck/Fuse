@@ -178,3 +178,18 @@ def test_the_wrap_tip_says_the_exit_code_is_hidden_only_when_the_code_returned_t
 
 def test_the_cut_note_says_how_long_the_rest_is_kept():
     assert f"(kept {code_mode.KEEP_S // 60} minutes)" in tool_jobs._code_clip("x" * 30_000, "r_1")
+
+
+def test_a_read_whose_row_keeps_only_its_head_still_counts_all_it_read(ssh_host, monkeypatch):
+    scripted(monkeypatch, [("read_file", {"path": "big.js"}), ("grep", {"pattern": "x"})])
+    big = "\n".join(f"line {i}" for i in range(2000))
+    hits = "\n".join(f"src/a.js:{i}:x" for i in range(300)) + "\n(showing 300 of 900 matches)"
+
+    async def reads(name, arguments, **kw):
+        return f"From host fuse-dev:\n{big if name == 'read_file' else hits}", {"name": name, "status": "done"}
+
+    jobs, _ = one_round(ssh_host, execute_tool=reads)
+
+    read, grep = (j.trace for j in jobs if j.parent)
+    assert read["truncated"] and read["output_lines"] == 2000
+    assert grep["truncated"] and grep["match_count"] == 300

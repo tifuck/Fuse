@@ -407,6 +407,8 @@ function consoleMatchCount(trace) {
   }
 
 function consoleLineCount(trace) {
+    // A read whose stored text was cut carries the whole count (tool_runner._read_counts).
+    if (Number.isInteger(trace?.output_lines)) return trace.output_lines;
     const preview = String((trace && (trace.preview || trace.summary)) || "");
     const named = typeof trace?.output === "string" && trace.output ? null : preview.match(/(\d+)\s+lines?\b/i);
     if (named) return Number(named[1]);

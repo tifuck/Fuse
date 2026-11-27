@@ -101,6 +101,20 @@ def _bound_alias(user_id: int, host_id) -> str:
     return str(row["alias"] or "").strip().lower() if row else ""
 
 
+def _read_counts(name: str, output: str) -> dict:
+    """What a read found, counted on its whole output as the views count its
+    stored text (console tool-formatting.js consoleLineCount and
+    consoleMatchCount): for a read whose stored text is cut."""
+    rows = [line.strip() for line in re.sub(r"^From host [^\n]*:\n", "", output).split("\n")]
+    rows = [line for line in rows if line]
+    while rows and re.fullmatch(r"\(.*\)", rows[-1]):
+        rows.pop()
+    if name in ("read_file", "list_dir"):
+        return {"output_lines": len(rows)}
+    rows = [line for line in rows if line != "--"]
+    return {"match_count": sum(bool(re.search(r":\d+:", line)) for line in rows) or len(rows)}
+
+
 def _gate_failure(job: ToolJob, jobs: list[ToolJob] = ()) -> str:
     """How an earlier host-changing call of the step failed, as the skip text
     words it; "" when a later call on its host may still run. Asked only
@@ -480,6 +494,9 @@ async def run_tools(
             if job.name == "run_code" and not job.parent:
                 # The views count its calls from its closing lines.
                 trace["output"] = _keep_calls_tail(output, keep)
+            if job.name in _HOST_READ_TOOLS and len(output) > keep:
+                # The row says how much it read, not how much of it was kept.
+                trace.update(_read_counts(job.name, output))
             trace["output_retained_chars"] = len(trace["output"])
             if trace.get("output_mode") == "tail" and trace.get("output_start") is not None:
                 trace["output_start"] += len(output) - len(trace["output"])
