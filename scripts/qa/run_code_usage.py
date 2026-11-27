@@ -38,6 +38,9 @@ import sys
 WORK = {"read_file", "list_dir", "grep", "glob", "write_file", "search_replace", "run_terminal_command"}
 CALLS = re.compile(r"^\[Fuse: \d+ calls?: .*$", re.M)
 COUNT = re.compile(r"(\w+)×(\d+)")
+# A pass-through as tool_jobs.wrap_tip counts one: nothing done to the result (its _STRINGS and _WORKS).
+STRINGS = re.compile(r"'(?:\\.|[^'\\\n])*'|\"(?:\\.|[^\"\\\n])*\"|`(?:\\.|[^`\\])*`")
+WORKS = re.compile(r"(?<!console)(?<!\.)\.(?!output\b)[A-Za-z_$]|[=!]==?|(?<!=)[<>]")
 STEP = re.compile(r"ts_(\d+)_(\d+)")
 
 
@@ -93,7 +96,8 @@ def tally(messages: list, since: str, until: str, stats: dict, streaks: dict) ->
             if n == 1:
                 c["one"] += 1
                 c["one_shell"] += calls[:1] == ["run_terminal_command"]
-                c["pass"] += len([line for line in str(t.get("code") or "").splitlines() if line.strip()]) <= 3
+                lines = [line for line in str(t.get("code") or "").splitlines() if line.strip()]
+                c["pass"] += len(lines) <= 3 and not WORKS.search(STRINGS.sub("''", "\n".join(lines)))
                 row += 1
                 streaks[model] = max(streaks[model], row)
             elif n > 1:
