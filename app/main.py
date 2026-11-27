@@ -524,8 +524,7 @@ class VersionedStaticFiles(StaticFiles):
             request_headers = dict(
                 (k.decode("latin-1").lower(), v.decode("latin-1")) for k, v in scope.get("headers") or []
             )
-            accept = request_headers.get("accept-encoding", "")
-            found = await asyncio.to_thread(static_assets.served, path, "gzip" in accept, "br" in accept)
+            found = await asyncio.to_thread(static_assets.served, path, "gzip" in request_headers.get("accept-encoding", ""))
             if found:
                 version, body, encoding = found
                 # Only the current bytes are immutable under their version. A
