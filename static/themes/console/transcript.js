@@ -67,7 +67,7 @@ function activityEntriesHtml(entries, msg, live, blockKey, blockLive = false) {
 
   }
 
-function activityBlockHtml(entries, msg, live, blockIndex, showElapsed, turnLive = live) {
+function activityBlockHtml(entries, msg, live, blockIndex, showElapsed, turnLive = live, stepsHtml = null) {
     const key = String(blockIndex);
     const aid = "chat-activity-" + ++deps.activitySeq;
     const traces = entries.filter((entry) => entry.type === "tool").map((entry) => entry.trace);
@@ -81,7 +81,7 @@ function activityBlockHtml(entries, msg, live, blockIndex, showElapsed, turnLive
     msg.activityOpenMap ||= {};
     if (!(key in msg.activityOpenMap)) msg.activityOpenMap[key] = defaultOpen;
     const open = msg.activityOpenMap?.[key] ?? defaultOpen;
-    const steps = activityEntriesHtml(entries, msg, turnLive || Boolean(msg.tools_live), key, live);
+    const steps = stepsHtml ?? activityEntriesHtml(entries, msg, turnLive || Boolean(msg.tools_live), key, live);
     const classes = ["chat-activity"];
     if (open || true) classes.push("is-open");
     // A model wait/background handoff must not hide already-rendered tools.
@@ -100,6 +100,34 @@ function activityBlockHtml(entries, msg, live, blockIndex, showElapsed, turnLive
       `<div class="chat-activity-panel" id="${aid}" role="region" aria-label="Activity details"><div class="chat-activity-panel-inner"><ol class="chat-timeline">${steps}</ol></div></div>` +
       "</section>"
     );
+  }
+
+// A running call's output grew: only its row is drawn again, when the block
+// around it reads the same and the call draws one row of its own (or none).
+// Anything else, a call that settles into a line included, redraws the block.
+function patchEntries(node, entries, sigs, wrap, msg, stepLive, blockLive) {
+    const kept = node._entrySigs;
+    if (!kept || kept.length !== sigs.length || node._wrapSig !== wrap) return false;
+    const timeline = node.querySelector(":scope > .chat-activity-panel > .chat-activity-panel-inner > .chat-timeline");
+    const rows = [];
+    for (let i = 0; i < sigs.length; i += 1) {
+      if (sigs[i] === kept[i]) continue;
+      const entry = entries[i];
+      const trace = entry?.type === "tool" ? entry.trace : null;
+      if (!trace || !timeline || trace.parent || trace.name === "run_code" || trace.name === "spawn_subagent" || !deps.toolPresentation(trace, stepLive).running) return false;
+      const fresh = document.createElement("template");
+      fresh.innerHTML = activityEntriesHtml([entry], msg, stepLive, node.dataset.activityBlock, blockLive);
+      const row = fresh.content.firstElementChild;
+      // Drawn nowhere while it runs, as it was before (it ran then too).
+      if (!row && kept[i].endsWith(":true")) continue;
+      // One call row, never a line of several: the block's own row of it is patched.
+      const old = row?.dataset.step && fresh.content.childElementCount === 1 && !row.querySelector("li[data-step]") &&
+        timeline.querySelector(`:scope > li[data-step="${CSS.escape(row.dataset.step)}"]`);
+      if (!old) return false;
+      rows.push([old, row]);
+    }
+    rows.forEach(([old, row]) => FuseChatDOM.patch(old, row, deps.transcriptDomOptions));
+    return true;
   }
 
 // Run notices (provider retries, cut-off calls, limits) sit where they
@@ -148,6 +176,8 @@ function updateAssistant(article, msg, live) {
     // Off-screen historical responses are hydrated from the latest message
     // object when they enter the viewport, rather than on every sync event.
     if (!article || article.hasAttribute("data-deferred-message")) return;
+    // Drawn here, so the runtime's unchanged-reply skip (transcript/paint.js) must not trust its key.
+    article._paintKey = null;
     if (deps.log.contains(article) && article.dataset.messageId && article.dataset.messageId !== msg.id) { deps.pendingFullPaint = true; return; }
     article._rebind?.(msg);
     if (deps.toolMotions.has(article)) { deps.motionPaints.set(article, { msg, live }); return; }
@@ -292,15 +322,18 @@ function updateAssistant(article, msg, live) {
     const consoleLive = (live);
     const phase = consoleLive ? deps.runPhase(msg) : "";
     const streamingReason = consoleLive && phase !== "calling" && segments.length && segments[segments.length - 1]?.type === "reasoning" ? segments.length - 1 : -1;
+    const entrySigs = (block, blockIndex) => {
+      const sigs = block.entries.map((entry) => {
+        if (entry.type !== "tool") return `r:${entry.segmentIndex}:${entry.segmentIndex === streamingReason ? "" : entry.text || ""}`;
+        const trace = entry.trace;
+        const running = Boolean(trace && deps.toolPresentation(trace, live).running);
+        return `t:${trace && trace.id}:${deps.tracesSig([trace])}:${running}`;
+      });
+      if (consoleLive && blockIndex === blocks.length - 1) sigs.push(`ph:${phase}`);
+      return sigs;
+    };
     const blockSig = (block, blockIndex) => {
-      if (block.kind === "activity") {
-        return block.entries.map((entry) => {
-          if (entry.type !== "tool") return `r:${entry.segmentIndex}:${entry.segmentIndex === streamingReason ? "" : entry.text || ""}`;
-          const trace = entry.trace;
-          const running = Boolean(trace && deps.toolPresentation(trace, live).running);
-          return `t:${trace && trace.id}:${deps.tracesSig([trace])}:${running}`;
-        }).join("~") + (consoleLive && blockIndex === blocks.length - 1 ? `~ph:${phase}` : "");
-      }
+      if (block.kind === "activity") return entrySigs(block, blockIndex).join("~");
       if (block.kind === "marker") return `m:${block.markerKind}:${block.text}:${block.summary || ""}`;
       if (block.kind === "delivery") return `d:${block.segmentIndex}:${block.text.length}`;
       if (block.kind === "notices") return `n:${Boolean(live)}:${block.lines.join("\n")}`;
@@ -333,13 +366,20 @@ function updateAssistant(article, msg, live) {
           node.replaceWith(replacement);
           return;
         }
-        const html = activityBlockHtml(block.entries, msg, live && blockIndex === blocks.length - 1, blockIndex, !live && blockIndex === lastActivity, live);
-        const fresh = document.createElement("template");
-        fresh.innerHTML = html;
-        const incoming = fresh.content.firstElementChild;
-        if (!incoming) return;
-        FuseChatDOM.patch(node, incoming, deps.transcriptDomOptions);
+        const blockLive = live && blockIndex === blocks.length - 1;
+        const sigs = entrySigs(block, blockIndex);
+        const wrap = activityBlockHtml(block.entries, msg, blockLive, blockIndex, !live && blockIndex === lastActivity, live, "").replace(/chat-activity-\d+/g, "");
+        if (!patchEntries(node, block.entries, sigs, wrap, msg, live || Boolean(msg.tools_live), blockLive)) {
+          const html = activityBlockHtml(block.entries, msg, blockLive, blockIndex, !live && blockIndex === lastActivity, live);
+          const fresh = document.createElement("template");
+          fresh.innerHTML = html;
+          const incoming = fresh.content.firstElementChild;
+          if (!incoming) return;
+          FuseChatDOM.patch(node, incoming, deps.transcriptDomOptions);
+        }
         node._blockSig = next;
+        node._entrySigs = sigs;
+        node._wrapSig = wrap;
       });
     } else if (flow._sig !== sig) {
       reasoningPositions = new Map([...flow.querySelectorAll("[data-reason-preview]")].map(el =>
@@ -376,7 +416,10 @@ function updateAssistant(article, msg, live) {
       [...flow.children].forEach((node, blockIndex) => { node._blockSig = blockSig(blocks[blockIndex], blockIndex); });
       flow.querySelectorAll("pre").forEach((el, i) => {
         const position = positions.get(preKey(el, i));
-        if (position) { el.scrollLeft = position[0]; el.scrollTop = position[1]; el._tailed = position[2]; }
+        if (!position) return;
+        // Writing an offset forces a layout: a block never scrolled keeps its zero.
+        if (position[0] || position[1]) { el.scrollLeft = position[0]; el.scrollTop = position[1]; }
+        el._tailed = position[2];
       });
       deps.hydratePermissionCards(flow);
       if (focusedStep && focusedControl) {
@@ -442,10 +485,21 @@ function updateAssistant(article, msg, live) {
       md.classList.toggle("is-writing", writing);
       // A fence the reply left open was streamed plain: the settled draw highlights it.
       if (md._src === srcKey && (writing || !md.querySelector("[data-code-open]"))) return;
-      const positions = [...md.querySelectorAll("pre")].map((el) => [el.scrollLeft, el.scrollTop]);
+      // Re-rendered code blocks keep a position the reader scrolled them to,
+      // recorded as they scroll (the list the paced reveal in markdown-stream.js
+      // keeps): reading every block's offsets on each update forced a layout.
+      // Only a scrolled block is written back, as each write forces one too.
+      if (!md._revealPre) {
+        md._revealPre = [];
+        md.addEventListener("scroll", (event) => {
+          if (event.target.tagName !== "PRE") return;
+          md._revealPre[[...md.querySelectorAll("pre")].indexOf(event.target)] = [event.target.scrollLeft, event.target.scrollTop];
+        }, { capture: true, passive: true });
+      }
       deps.paintContentBlock(md, text, writing, catalog, srcKey);
-      md.querySelectorAll("pre").forEach((el, i) => {
-        if (positions[i]) { el.scrollLeft = positions[i][0]; el.scrollTop = positions[i][1]; }
+      if (md._revealPre.some(Boolean)) md.querySelectorAll("pre").forEach((el, i) => {
+        const saved = md._revealPre[i];
+        if (saved && (saved[0] || saved[1])) { el.scrollLeft = saved[0]; el.scrollTop = saved[1]; }
       });
     });
     deps.syncActivityElapsed(article, msg, live);

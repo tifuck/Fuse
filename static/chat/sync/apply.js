@@ -222,7 +222,7 @@ export function createApply(ctx) {
         const article = S.log.children[i];
         if (msg.role === "assistant") {
           const live = messageRunLive(msg);
-          ui.updateAssistant(article, msg, live);
+          transcript.syncAssistant(article, msg, live);
         } else if (article.querySelector("[data-user-text]")) {
           const text = article.querySelector("[data-user-text]");
           if (text.dataset.userText !== msg.content) ui.fillUserText(text, msg.content);
