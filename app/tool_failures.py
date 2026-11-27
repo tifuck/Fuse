@@ -48,6 +48,9 @@ KINDS = (
     "refused",  # catalog refused to add the tool (load cap)
     "unavailable",  # feature unavailable in this context (e.g. spawn)
     "vault_locked",  # host tools while the vault is locked
+    # run_code: kept as set, since the error text quotes the code's failed call or a command's output.
+    "code_error",  # the code threw (a bug in it, or a failed call it did not catch)
+    "command_failed",  # an sh command in the code exited non-zero: the command failed, not the code
     "tool_error",  # anything else
 )
 
@@ -327,7 +330,9 @@ GUIDE = (
     "upstream_error / not_found = environment or provider problems, not the model "
     "(agent timed out / agent is busy are upstream_error; unknown host alias is not_found); "
     "interrupted = client cancelled; vault_locked / unavailable = context problems "
-    "(agent is offline is unavailable). Workspace grep/list errors should include the "
+    "(agent is offline is unavailable). run_code rows: code_error = the snippet threw (its own bug or a failed "
+    "call it did not catch); command_failed = a command it ran through sh exited non-zero, which is the command's "
+    "outcome, not a fault in the code. Workspace grep/list errors should include the "
     "connector stderr and exit code, not a bare 'exit'. reasoning holds the model's reasoning right before "
     "the failed call; user_text is the user request that started the turn; model and "
     "upstream_model identify the route. For unknown_tool rows, trace.suggestion (when present) "

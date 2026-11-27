@@ -41,6 +41,13 @@ def test_an_explicit_kind_wins_over_the_text():
     assert tool_failures.classify("unknown tool", kind="not-a-kind") == "unknown_tool"
 
 
+def test_run_code_failures_keep_their_kind_whatever_the_output_says():
+    # A failed command's output can read like any bucket ("not found", "timed out", "permission denied").
+    error = "sh npm test: exited 1\n--- output ---\nError: module not found; request timed out"
+    assert tool_failures.classify(error, kind="command_failed") == "command_failed"
+    assert tool_failures.classify("read_file a.txt: file not found", kind="code_error") == "code_error"
+
+
 def test_a_record_round_trips_with_its_fields_clipped(fresh_db):
     uid = quick_user()
     trace = "Traceback (most recent call last):\n" + "  frame\n" * 1000 + "TypeError: cannot unpack coroutine"
