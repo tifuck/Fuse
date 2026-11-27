@@ -148,7 +148,7 @@ def test_a_failed_sh_stops_the_code_with_its_output_intact_and_the_users_line():
 
     text, trace = run_code("await write_file('a.txt', 'x');\nawait sh('npm   test');\nawait write_file('b.txt', 'y');", runner)
 
-    assert trace["status"] == "error" and trace["kind"] == "code_error"
+    assert trace["status"] == "error" and trace["kind"] == "command_failed"
     first, at, *_ = text.splitlines()
     assert first == "Error: sh npm test: exited 1" and "line 2" in at
     assert "--- output ---\n" + output in text

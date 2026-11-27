@@ -524,7 +524,9 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             except (ValueError, RecursionError, KeyError):
                 outcome = None
             if outcome is not None and not outcome.get("ok"):
-                kind = "memory" if "memory limit" in str(outcome.get("error") or "").lower() else "code_error"
+                # An sh failure is a command that failed, not a fault in the code.
+                kind = ("command_failed" if "frames" in outcome
+                        else "memory" if "memory limit" in str(outcome.get("error") or "").lower() else "code_error")
                 if kind == "memory":
                     outcome["error"] = (f"the code used its {HEAP_MB} MB of memory. Keep only what you need from each "
                                         "file instead of holding them all, or split the work across runs.")
