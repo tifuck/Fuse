@@ -129,9 +129,9 @@ export function createBoot(ctx) {
     }));
 
     // The linked thread opens as soon as the history lists it (its snapshot
-    // has been downloading since <head>), not after the archive and the
-    // socket. An archived one is only known once the archive is in, and a
-    // sync that failed still opens it: both wait for connectSync, as before.
+    // has been downloading since <head>), not after the socket. An archived
+    // one is not in that list, and a sync that failed still opens it: both
+    // wait for connectSync, as before.
     sync.connectSync(true, false, () => {
       if (sidebar.threadById((new URLSearchParams(window.location.search).get("t") || "").trim())) openLinked().catch(() => {});
     })

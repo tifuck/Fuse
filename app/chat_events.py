@@ -100,15 +100,22 @@ def replay_valid(uid, cursor):
     return floor <= cursor <= high
 
 
-def _downgrade_progress(row, viewed):
+def _downgrade_progress(row, viewed, thread=None):
     """Compact an agent.progress event for a subagent the socket is not viewing.
 
     The full patch stream of every subagent would force the client to replay
     patches it mostly discards; the viewed agent streams in full while the
     rest surface as a tick (enough for list rows and tool chips). Pending
     permission asks always pass through — the dock queue is fed from them.
+
+    run.progress of a thread other than the one the socket views becomes a
+    run.tick: the page applies only the open thread's patches and reads a
+    thread it opens from its snapshot. thread None (a page that names no
+    thread) keeps them all.
     """
     payload = row["payload"]
+    if row["type"] == "run.progress" and thread is not None and row["thread_id"] != thread and isinstance(payload, dict):
+        return {"id": row["id"], "type": "run.tick", "thread_id": row["thread_id"], "payload": {"run_id": payload.get("run_id")}}
     if row["type"] != "agent.progress" or not isinstance(payload, dict):
         return row
     run_id = payload.get("run_id")
@@ -183,7 +190,7 @@ async def events(ws: WebSocket):
     signal = asyncio.Event()
     _subscribers[uid][ws] = signal
     started = last_pong = time.monotonic()
-    view = {"run_id": None}
+    view = {"run_id": None, "thread_id": ws.query_params.get("thread")}
 
     async def send(data):
         async with asyncio.timeout(5):
@@ -196,8 +203,9 @@ async def events(ws: WebSocket):
             if message == "pong":
                 last_pong = time.monotonic()
                 continue
-            # The client names the subagent whose full patch stream it renders;
-            # every other live subagent arrives as a compact agent.tick.
+            # The client names the subagent whose full patch stream it renders
+            # and the thread it shows; every other live subagent arrives as a
+            # compact agent.tick, every other thread's run as a run.tick.
             try:
                 import json as _json
 
@@ -208,8 +216,12 @@ async def events(ws: WebSocket):
             if not isinstance(data, dict) or data.get("type") != "view":
                 await ws.close(code=4400)
                 return
-            run_id = data.get("run_id")
-            view["run_id"] = run_id if isinstance(run_id, str) and run_id else None
+            if "run_id" in data:
+                run_id = data.get("run_id")
+                view["run_id"] = run_id if isinstance(run_id, str) and run_id else None
+            if "thread_id" in data:
+                thread_id = data.get("thread_id")
+                view["thread_id"] = thread_id if isinstance(thread_id, str) else ""
 
     reader = asyncio.create_task(receive())
     reader.add_done_callback(lambda _: signal.set())
@@ -239,8 +251,7 @@ async def events(ws: WebSocket):
                 await send({"type": "ping"})
                 last_ping = now
             if rows:
-                viewed = view["run_id"]
-                rows = [_downgrade_progress(row, viewed) for row in rows]
+                rows = [_downgrade_progress(row, view["run_id"], view["thread_id"]) for row in rows]
                 await send({"type": "events", "events": rows})
                 cursor = rows[-1]["id"]
                 continue

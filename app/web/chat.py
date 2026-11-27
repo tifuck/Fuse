@@ -653,17 +653,17 @@ async def chat_thread_get(request: Request, thread_id: str):
     stream = request.query_params.get("stream") == "1"
 
     def _load():
+        # Opening a thread is what clears its finished-run badge; get_thread
+        # clears it before it builds the view, unchanged answers included.
         thread = chats.get_thread(
             user["id"], thread_id,
-            observed_cursor=observed, observed_thread_cursor=observed_thread, queued=queued,
+            observed_cursor=observed, observed_thread_cursor=observed_thread, queued=queued, mark_read=True,
         )
         if not thread:
             raise HTTPException(404, "Chat not found")
         if thread.get("unchanged"):
             return JSONResponse(thread, headers={"Cache-Control": "no-store"})
-        # Opening a thread is what clears its finished-run badge. Only full views
-        # reach here: an unchanged short-circuit means the finishing revision was
-        # already delivered, so the flag was cleared by that earlier view.
+        # A turn that finished while the view was being built.
         if thread.get("unread"):
             chats.mark_thread_read(user["id"], thread_id)
             thread["unread"] = False

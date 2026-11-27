@@ -103,6 +103,9 @@ function requestPreview() {
   const key = previewKey();
   const hit = previews.get(key);
   if (!S.modelId || previewing === key || choice?.key === key || (hit && Date.now() - hit.at <= PREVIEW_MS)) return;
+  // A chat is opening (the linked one at boot, before its download starts):
+  // it asks with its own id once it is open.
+  if (!S.currentId && (S.loading || (S.navigation === 0 && window.__fuseBootThread))) return;
   previewing = key;
   askPool().then((pool) => {
     if (previewing === key) previewing = "";

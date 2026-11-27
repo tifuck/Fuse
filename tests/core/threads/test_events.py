@@ -257,3 +257,80 @@ def test_sockets_of_one_user_share_an_event_read_until_the_next_wake():
     assert shared[0] is shared[1] is shared[2] and shared[0] == [{"id": 8, "n": 1}]
     assert late == [{"id": 8, "n": 2}]
     assert chat_events._reads == {}
+
+
+def test_the_page_that_applied_a_turn_end_reconciles_unchanged_and_still_reads_the_badge(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    run = chat_store.start_turn(uid, thread["id"], "go", thread["revision"], None)["run"]
+    cursor = chat_store.cursor(uid)
+
+    chat_store.finish_run(run["id"], {"content": "done"}, "completed")
+
+    published = events(uid, cursor)
+    assert [e["type"] for e in published] == ["run.completed", "thread.updated"]
+    # The page applies the run event and reconciles at its id: the thread row
+    # after it moved nothing that read would return.
+    end = published[0]["id"]
+    assert chats.get_thread(uid, thread["id"], observed_cursor=end, observed_thread_cursor=end, mark_read=True)["unchanged"] is True
+    assert chats.get_thread(uid, thread["id"])["unread"] is False
+    # Reading the badge moves no watermark: another tab at the same event is
+    # answered unchanged too.
+    assert chats.get_thread(uid, thread["id"], observed_thread_cursor=end, mark_read=True)["unchanged"] is True
+
+
+def test_opening_an_unread_chat_reads_it_before_the_snapshot(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    db.execute("UPDATE chat_threads SET unread=1 WHERE public_id=?", (thread["id"],))
+    cursor = chat_store.cursor(uid)
+
+    view = chats.get_thread(uid, thread["id"], mark_read=True)
+
+    read = events(uid, cursor)
+    assert view["unread"] is False and [(e["type"], e["payload"]["unread"]) for e in read] == [("thread.updated", False)]
+    # The snapshot already covers the read's event: the page has nothing to fetch for it.
+    assert view["event_cursor"] >= read[-1]["id"]
+    assert chats.get_thread(uid, thread["id"], observed_thread_cursor=view["thread_cursor"])["unchanged"] is True
+
+
+def test_label_writes_say_so_and_settings_writes_do_not(fresh_db):
+    from app import chat_titles
+
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    cursor = chat_store.cursor(uid)
+
+    chats.update_thread(uid, thread["id"], title="Renamed")
+    chats.update_thread(uid, thread["id"], pinned=True)
+    chats.update_thread(uid, thread["id"], memory_off=True)
+    chat_titles.apply_regenerated_title(uid, pk(uid, thread["id"]), "Regenerated")
+    chats.update_thread(uid, thread["id"], model="other")
+    chats.update_thread(uid, thread["id"], context="be brief")
+
+    flags = [e["payload"].get("labels_only", False) for e in events(uid, cursor) if e["type"] == "thread.updated"]
+    assert flags == [True, True, True, True, False, False]
+
+
+def test_a_socket_sends_full_run_progress_only_for_the_thread_it_views(fresh_db, monkeypatch):
+    from tests.core.auth._support import sign_in, web_client
+
+    uid = make_user()
+    rows = [
+        {"id": 1, "type": "run.progress", "thread_id": "viewed", "payload": {"run_id": "r1", "events": [{"n": 1}]}},
+        {"id": 2, "type": "run.progress", "thread_id": "other", "payload": {"run_id": "r2", "events": [{"n": 2}]}},
+        {"id": 3, "type": "run.completed", "thread_id": "other", "payload": {"run_id": "r2"}},
+    ]
+    monkeypatch.setattr(chat_events, "replay_valid", lambda uid, cursor: True)
+    monkeypatch.setattr(chat_store, "events_after", lambda uid, cursor, limit: [row for row in rows if row["id"] > cursor])
+
+    def first_batch(query):
+        with web_client() as web:
+            sign_in(web, uid)
+            with web.websocket_connect("wss://testserver/chat/events?" + query, headers={"origin": "https://testserver"}) as ws:
+                return [(e["type"], e["payload"]) for e in ws.receive_json()["events"]]
+
+    assert first_batch("cursor=0&thread=viewed") == [
+        ("run.progress", rows[0]["payload"]), ("run.tick", {"run_id": "r2"}), ("run.completed", {"run_id": "r2"})]
+    # A page that names no thread gets every patch.
+    assert first_batch("cursor=0") == [(row["type"], row["payload"]) for row in rows]

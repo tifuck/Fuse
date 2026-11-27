@@ -1282,6 +1282,11 @@ def finish_run(run_id, message, status):
                 run = {**dict(row), "provider_messages": _provider_messages(conn, run_id)}
             chat_history.finalize(conn, run, request, messages, aggregate_message)
         payload = {"run_id": run_id, "message_id": row["message_id"], "message": message, "status": status, "revision": revision}
+        # The replies a steer split off settle in this write too; with them
+        # the run event carries every row it changed.
+        updates = [part for mid, part in projected.items() if mid != row["message_id"]]
+        if updates:
+            payload["updates"] = updates
         if status == "completed":
             # A turn that leaves subagents or background commands working, or
             # their results undelivered, is not the end of the work: the wake
@@ -1290,7 +1295,10 @@ def finish_run(run_id, message, status):
             payload["settled"] = chat_recaps._settled(conn, row["user_id"], row["thread_id"])
         chat_tx.event(conn, row["user_id"], "run." + status, row["thread_id"], payload)
         if thread:
-            chat_tx.thread_event(conn, row["user_id"], row["thread_id"])
+            # The run event carries this write's transcript change; the row
+            # adds only sidebar flags, so the page that applied the run event
+            # reconciles against an unchanged watermark.
+            chat_tx.thread_event(conn, row["user_id"], row["thread_id"], watermark=False)
 
 
 def _provider_messages(conn, run_id):

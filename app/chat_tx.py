@@ -313,7 +313,7 @@ def remember(conn, user_id, command_id, fingerprint, result):
             raise ChatValidationError("this command is already being applied; retry to get its result", 409) from exc
 
 
-def event(conn, user_id, type, thread_id=None, payload=None, guard_run=None):
+def event(conn, user_id, type, thread_id=None, payload=None, guard_run=None, watermark=True):
     # Progress guard first: run row lock BEFORE the per-user cursor lock, so
     # publication and finish_run share one lock order (chat_runs ->
     # chat_event_cursors) and can never deadlock. Group-committed progress is
@@ -342,7 +342,7 @@ def event(conn, user_id, type, thread_id=None, payload=None, guard_run=None):
     if getattr(_writes, "users", None) is not None:
         _writes.users.add(user_id)
         threads = getattr(_writes, "threads", None)
-        if thread_id is not None and threads is not None:
+        if thread_id is not None and threads is not None and watermark:
             key = (int(user_id), int(thread_id))
             if eid > threads.get(key, 0):
                 threads[key] = eid
@@ -450,7 +450,13 @@ def prune_command_receipts(now: datetime | None = None) -> int:
     return int(deleted or 0)
 
 
-def thread_event(conn, user_id, thread_id, transcript_changed=False):
+def thread_event(conn, user_id, thread_id, transcript_changed=False, labels_only=False, watermark=True):
+    """The thread's sidebar row as a thread.updated event. labels_only: the
+    write changed only what the row carries (title, pin, archive, permission
+    mode, memory switch), so an open view takes it from the event instead of
+    reading the thread again. watermark=False leaves the thread's watermark
+    (get_thread's short-circuit) where it was: for a flag no view shows, or
+    a write whose run event already carries the change."""
     from . import chat_threads, chats
 
     # The thread row by a locking read: a plain one is this transaction's
@@ -483,4 +489,6 @@ def thread_event(conn, user_id, thread_id, transcript_changed=False):
     payload = chats._view(row)
     if transcript_changed:
         payload["transcript_changed"] = True
-    return event(conn, user_id, "thread.updated", thread_id, payload)
+    if labels_only:
+        payload["labels_only"] = True
+    return event(conn, user_id, "thread.updated", thread_id, payload, watermark=watermark)
