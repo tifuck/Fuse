@@ -185,6 +185,18 @@ export function createSend(ctx) {
     completeTurn(text, null, invoke ? { invoke_skill: invoke } : undefined);
   }
 
+    // A turn's reply (?tail=1) holds only the turn's own messages, from
+    // messages_from on, written on the transcript at base_revision. They follow
+    // this view's messages when it still shows that transcript; else null, and
+    // the thread is read whole.
+    function withTranscript(thread) {
+    if (thread.messages_from == null) return thread;
+    const { messages_from: from, base_revision: base, after_id: after, ...rest } = thread;
+    if (S.partialTranscript || Number(base) !== Number(S.serverRevision) || from > S.messages.length ||
+        (from > 0 && S.messages[from - 1].id !== after)) return null;
+    return { ...rest, messages: [...S.messages.slice(0, from), ...thread.messages] };
+  }
+
     async function completeTurn(text, extraAttachments, opts) {
     const usedPending = extraAttachments == null;
     const attachments = usedPending ? S.pendingAttachments.slice() : extraAttachments.slice();
@@ -273,7 +285,10 @@ export function createSend(ctx) {
         },
       });
       const request = queued ? { id: S.currentId, body: queued } : S.pendingTurn;
-      const data = await net.api("/chat/threads/" + request.id + (queued ? "/queue" : "/turns") + "?pack=1", { method: "POST", body: JSON.stringify(request.body) });
+      // What this view holds, for a queued turn's reply to carry only the turn.
+      const have = S.partialTranscript || request.id !== S.currentId ? "" :
+        "&have=" + S.messages.length + "&base=" + S.serverRevision + "&after=" + encodeURIComponent(S.messages.at(-1)?.id || "");
+      const data = await net.api("/chat/threads/" + request.id + (queued ? "/queue?pack=1" + have : "/turns?pack=1&tail=1"), { method: "POST", body: JSON.stringify(request.body) });
       if (queued && !data.sent) {
         // Held there (a Stop elsewhere) or another item went first.
         if (data.held) queue.holdQueued(opts.queueId);
@@ -306,7 +321,8 @@ export function createSend(ctx) {
         composer.resizeInput();
       }
       pending.remove();
-      if (data.thread) sync.acceptThread(net.unpackThread(data.thread));
+      const thread = data.thread && withTranscript(net.unpackThread(data.thread));
+      if (thread) sync.acceptThread(thread);
       else await sync.reconcileThread().catch(() => {});
       sidebar.rememberUndo(request.undoSnap || undoSnap);
       // The acknowledgment is a consistent snapshot. If the socket already

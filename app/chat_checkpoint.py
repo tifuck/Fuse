@@ -163,7 +163,8 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
         from .chat_runs import _segments_patch
 
         cached = _display_previous.get(run_id)
-        if cached is not None and "message_digest" in row.keys() and cached[:2] == (guard, row["message_digest"]):
+        published = cached is not None and "message_digest" in row.keys() and cached[:2] == (guard, row["message_digest"])
+        if published:
             previous = cached[2]
         else:
             previous = chat_views.display_messages(stored_request, _checkpoint_message(run_id, row), row["message_id"], live=True)
@@ -186,9 +187,23 @@ def checkpoint(run_id, message, events=None, durable=True, future=None):
         segments = _segments_patch(old.get("segments") or [], current.get("segments") or [])
         if segments:
             patch["segments"] = segments
-        extra_events = [entry for entry in events or [] if (entry.get("fuse") or {}).get("event") not in ("tool", "message.patch") and entry.get("fuse")]
-        payload.update(events=[{"fuse": patch}, *extra_events], tools=current.get("tools") or [], permissions=current.get("permissions") or [],
+        # The reply's own tools change by this tick's tool events, as an
+        # unsteered run's do. The whole list, every output included, goes only
+        # when tools moved between replies or a change came without an event,
+        # and always for a subagent (its agent.tick counts the list).
+        tools, before = current.get("tools") or [], old.get("tools") or []
+        prior = {tool.get("id"): tool for tool in before}
+        evented = {(entry.get("fuse") or {}).get("id") for entry in events or [] if (entry.get("fuse") or {}).get("event") == "tool"}
+        by_events = (published and not materialize_thread and not row["parent_run_id"]
+                     and [tool.get("id") for tool in tools[:len(before)]] == [tool.get("id") for tool in before]
+                     and all(tool.get("id") in evented for tool in tools if prior.get(tool.get("id")) != tool))
+        own = {tool.get("id") for tool in tools}
+        extra_events = [entry for entry in events or [] if entry.get("fuse") and (
+            entry["fuse"].get("event") not in ("tool", "message.patch") or (by_events and entry["fuse"].get("event") == "tool" and entry["fuse"].get("id") in own))]
+        payload.update(events=[{"fuse": patch}, *extra_events], permissions=current.get("permissions") or [],
                        updates=[msg for mid, msg in projected.items() if mid != row["message_id"] and msg != previous.get(mid)])
+        if not by_events:
+            payload["tools"] = tools
     else:
         payload.update({"events": events} if events is not None else {"message": message})
         # Subagent checkpoints travel as agent.progress; the dock permission

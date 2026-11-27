@@ -934,19 +934,21 @@ def _durable_cursor(run_id, stamps):
 RUN_COLUMNS = ("id, thread_id, user_id, status, request, message_id, message, created_at, updated_at, "
                "cancel_requested, parent_run_id, root_run_id, agent_depth, loaded_tools, resume_count, "
                "cancel_requested_at, activity")
+# For a writer that holds the run's request and message already.
+RUN_HEAD_COLUMNS = ", ".join(name for name in RUN_COLUMNS.split(", ") if name not in ("request", "message"))
 
 
-_view_columns: str | None = None
+_view_columns: dict[bool, str] = {}
 
 
-def _thread_view_columns(conn) -> str:
+def _thread_view_columns(conn, messages=True) -> str:
     """chat_threads' columns but retained_history (often hundreds of KB): the
     view keys its meter on the digest and the replay build reads it on a miss."""
-    global _view_columns
-    if _view_columns is None:
+    if messages not in _view_columns:
         names = [row[1] for row in conn.execute("PRAGMA table_info(chat_threads)").fetchall()]
-        _view_columns = ", ".join(f"t.{name}" for name in names if name != "retained_history")
-    return _view_columns
+        skip = ("retained_history",) if messages else ("retained_history", "messages")
+        _view_columns[messages] = ", ".join(f"t.{name}" for name in names if name not in skip)
+    return _view_columns[messages]
 
 
 def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
@@ -980,14 +982,7 @@ def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
         (thread_id, user_id),
     ).fetchone() is not None
     if run:
-        live = dict(run["message"]) if isinstance(run.get("message"), dict) else {}
-        live.setdefault("id", run["message_id"])
-        live.setdefault("role", "assistant")
-        live.setdefault("content", "")
-        live.setdefault("reasoning", "")
-        live.setdefault("error", "")
-        live.setdefault("tools", [])
-        live.setdefault("segments", [])
+        live = _live_message(run)
         projected = display_messages(run.get("request") or {}, live, run["message_id"], live=True)
         result["messages"] = _project_thread_messages(result["messages"], projected, run.get("request") or {})
         result["run"] = {**run, "message": projected[run["message_id"]]}
@@ -1011,6 +1006,48 @@ def thread_view(conn, user_id, thread_id, *, queued=(), stamps=None):
     from . import chat_recaps
 
     return chat_recaps.attach(conn, user_id, thread_id, result)
+
+
+def _live_message(run):
+    live = dict(run["message"]) if isinstance(run.get("message"), dict) else {}
+    live.setdefault("id", run["message_id"])
+    live.setdefault("role", "assistant")
+    live.setdefault("content", "")
+    live.setdefault("reasoning", "")
+    live.setdefault("error", "")
+    live.setdefault("tools", [])
+    live.setdefault("segments", [])
+    return live
+
+
+def turn_view(conn, user_id, thread_id, messages, meter, preamble, run, base_revision):
+    """thread_view for the turn start that just wrote ``messages`` and
+    ``run`` in this transaction, without the messages before the turn's own:
+    ``messages_from`` is where they go in the transcript at ``base_revision``,
+    after the message ``after_id``. Nothing in it grows with the transcript;
+    ``meter`` is the one the turn measured for its request."""
+    from . import chat_threads, chats
+    from . import context_compact as ctxmod
+
+    row = conn.execute(
+        f"""SELECT {_thread_view_columns(conn, messages=False)}, h.alias AS host_alias, p.name AS project_name, p.color AS project_color,
+                  p.logo_rev AS project_logo_rev, p.archived AS project_archived, s.name AS schedule_name
+           FROM chat_threads t
+           LEFT JOIN user_hosts h ON h.id=t.host_id
+           LEFT JOIN user_projects p ON p.id=t.project_id
+           LEFT JOIN chat_schedules s ON s.id=t.schedule_id
+           WHERE t.user_id=? AND t.id=?""",
+        (user_id, thread_id),
+    ).fetchone()
+    result = chats._view(row)
+    chat_threads._open_fields(result, row, ctxmod.parse_state(row["compaction"]), meter, preamble, messages)
+    start = len(messages) - 2
+    live = _live_message(run)
+    # The turn's user message and its empty reply: no traces to settle.
+    result.update(messages=[*messages[start:-1], live], messages_from=start, base_revision=base_revision,
+                  after_id=messages[start - 1]["id"] if start else None, run={**run, "message": live}, running=True,
+                  accepted_queue_ids=[])
+    return result
 
 
 def publish_thread_view(conn, user_id, thread_id, transcript_changed=False):

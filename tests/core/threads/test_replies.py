@@ -127,3 +127,69 @@ def test_turn_and_queue_replies_are_packed_on_request(web, route):
     reply = packed.json()["thread"]
     assert any("n" in seg and "text" not in seg for msg in reply["messages"] for seg in msg.get("segments") or [])
     assert _unpacked(reply)["messages"] == stored
+
+
+def test_a_turn_reply_on_request_carries_only_the_turn(web):
+    uid = make_user()
+    thread = _finished_thread(uid)
+    before = _stored_view(uid, thread["id"])
+    sign_in(web, uid)
+    body = {"text": "again", "expected_revision": thread["revision"], "command_id": "t-tail"}
+
+    with patch.object(chat_runs, "start", new=AsyncMock(return_value=None)):
+        sent = web.post(f"/chat/threads/{thread['id']}/turns?pack=1&tail=1", json=body)
+        retried = web.post(f"/chat/threads/{thread['id']}/turns?pack=1&tail=1", json=body)
+
+    assert sent.status_code == 200 and retried.status_code == 200, (sent.text, retried.text)
+    reply = _unpacked(sent.json()["thread"])
+    full = chats.get_thread(uid, thread["id"])
+    assert (reply.pop("messages_from"), reply.pop("base_revision"), reply.pop("after_id")) == (
+        len(before), thread["revision"], before[-1]["id"])
+    # Spliced onto the transcript the page held, it is the thread as stored.
+    assert before + reply.pop("messages") == _stored_view(uid, thread["id"])
+    assert reply["revision"] == full["revision"] and reply["run"]["id"] == full["run"]["id"]
+    # The rest is the full view's, but for the prompt snapshot no page reads.
+    full["compaction"]["meter"]["history_info"].pop("prompt_snapshot", None)
+    assert {key: value for key, value in reply.items() if key not in ("event_cursor", "thread_cursor", "run")} == \
+        {key: value for key, value in full.items() if key not in ("messages", "event_cursor", "thread_cursor", "run")}
+    # A retry may come from a page that never saw the turn: the whole thread.
+    again = _unpacked(retried.json()["thread"])
+    assert "messages_from" not in again and again["messages"] == _stored_view(uid, thread["id"])
+
+
+def test_a_queued_turn_reply_carries_only_the_turn_when_the_page_held_the_thread(web):
+    uid = make_user()
+    thread = _finished_thread(uid)
+    before = _stored_view(uid, thread["id"])
+    sign_in(web, uid)
+    held = f"have={len(before)}&base={thread['revision']}&after={before[-1]['id']}"
+
+    with patch.object(chat_runs, "start", new=AsyncMock(return_value=None)):
+        sent = web.post(f"/chat/threads/{thread['id']}/queue?pack=1&{held}", json={"id": "q-tail", "text": "again", "created": 1})
+
+    assert sent.status_code == 200, sent.text
+    reply = _unpacked(sent.json()["thread"])
+    assert reply["messages_from"] == len(before) and before + reply["messages"] == _stored_view(uid, thread["id"])
+
+    # The page's copy is older than the turn's base: the whole thread.
+    current = chats.get_thread(uid, thread["id"])
+    chat_store.finish_run(current["run"]["id"], {"content": "done"}, "completed")
+    with patch.object(chat_runs, "start", new=AsyncMock(return_value=None)):
+        stale = web.post(f"/chat/threads/{thread['id']}/queue?pack=1&{held}", json={"id": "q-tail-2", "text": "more", "created": 2})
+    assert stale.status_code == 200, stale.text
+    assert "messages_from" not in stale.json()["thread"]
+
+
+def test_a_transcript_save_answers_packed_on_request(web):
+    uid = make_user()
+    thread = _finished_thread(uid)
+    sign_in(web, uid)
+    stored = _stored_view(uid, thread["id"])
+
+    saved = web.patch(f"/chat/threads/{thread['id']}?pack=1", json={"messages": stored, "expected_revision": thread["revision"]})
+    assert saved.status_code == 200, saved.text
+    assert _unpacked(saved.json())["messages"] == stored
+
+    renamed = web.patch(f"/chat/threads/{thread['id']}?pack=1", json={"title": "Renamed", "expected_revision": saved.json()["revision"]})
+    assert renamed.status_code == 200, renamed.text
+    assert "messages" not in renamed.json() and "segments_packed" not in renamed.json()

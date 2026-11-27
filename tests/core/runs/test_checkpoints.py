@@ -5,8 +5,9 @@ import json
 import re
 from unittest.mock import patch
 
-from app import chat_checkpoint, chat_recovery, chat_store, chats, db, mysql_compat
+from app import chat_checkpoint, chat_children, chat_recovery, chat_store, chats, db, mysql_compat
 from tests.core.helpers import quick_user
+from tests.core.threads._support import events
 
 from ._support import provider_messages, run_row
 
@@ -280,3 +281,29 @@ def test_streaming_flushes_that_keep_failing_fail_the_turn(fresh_db):
     assert SAVE_FAILED in stored["message"]["error"]
     assert not stored["message"].get("stopped")
     assert len(calls) >= 3
+
+
+def test_a_steered_tick_sends_its_tool_changes_as_events_not_the_whole_list(fresh_db):
+    uid = quick_user()
+    run = _turn(uid)
+    thread_id = chat_store.get_run(uid, run["id"])["thread_id"]
+    first = {"id": "t1", "name": "web_search", "status": "done", "output": "old hits " * 500}
+    chat_checkpoint.checkpoint(run["id"], {"content": "before", "tools": [first]}, [])
+    chat_store.steer_turn(uid, thread_id, "also this", "steer-1")
+    # Delivered: the provider transcript holds the steer and the worker sealed it.
+    chat_checkpoint.save_turn_progress(run["id"], [*run["request"]["messages"], {"role": "user", "content": "also this (steer:steer-1)"}])
+    chat_children.seal_steer_display(run["id"], ["steer-1"])
+    running = {"id": "t2", "name": "web_search", "status": "running", "output": ""}
+    chat_checkpoint.checkpoint(run["id"], {"content": "before", "tools": [first, running]}, [{"fuse": {"event": "tool", **running}}])
+    cursor = chat_store.cursor(uid)
+
+    done = {**running, "status": "done", "output": "new hits"}
+    chat_checkpoint.checkpoint(run["id"], {"content": "before", "tools": [first, done]}, [{"fuse": {"event": "tool", **done}}])
+    chat_checkpoint.checkpoint(run["id"], {"content": "before, after", "tools": [first, done]}, [])
+
+    ticks = [event["payload"] for event in events(uid, cursor) if event["type"] == "run.progress"]
+    assert len(ticks) == 2 and not any("tools" in tick for tick in ticks)
+    assert [entry["fuse"] for entry in ticks[0]["events"] if entry["fuse"]["event"] == "tool"] == [{"event": "tool", **done}]
+    # The reply's own tools after the steer, as a snapshot shows them.
+    live = chats.get_thread(uid, thread_id)["run"]["message"]
+    assert [(tool["id"], tool["status"]) for tool in live["tools"]] == [("t2", "done")]

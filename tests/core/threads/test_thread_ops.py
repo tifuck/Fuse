@@ -114,7 +114,7 @@ def test_deleting_a_chat_or_project_deletes_its_command_jobs_and_events(fresh_db
 def test_retention_style_delete_refuses_while_a_run_is_live(fresh_db):
     uid = make_user()
     thread = chats.create_thread(uid, model="offline")
-    current = chat_store.start_turn(uid, thread["id"], "busy", thread["revision"], None)["thread"]
+    current = chat_store.start_turn(uid, thread["id"], "busy", thread["revision"], None, reply="thread")["thread"]
 
     assert chats.delete_thread(uid, thread["id"], expected_revision=current["revision"], cancel_active=False) is False
     assert chats.get_thread(uid, thread["id"]) is not None

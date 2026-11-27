@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -143,18 +144,24 @@ def _prune() -> None:
         _live.pop(key, None)
 
 
+# out and out_chars move together under this lock: the job list reads both
+# from another thread to send only output a page does not hold yet.
+_out_lock = threading.Lock()
+
+
 def _append_out(rec: dict, text: str) -> None:
     if not text:
         return
     rec["out_bytes"] = int(rec.get("out_bytes") or 0) + len(text.encode("utf-8"))
-    seen = int(rec.get("out_chars") or 0)
-    if seen < OUT_HEAD_CHARS:
-        rec["out_head"] = (rec.get("out_head") or "") + text[: OUT_HEAD_CHARS - seen]
-    rec["out_chars"] = seen + len(text)
-    # Retain a true rolling tail: the newest text always lands in the buffer,
-    # trimmed from the front once it passes the cap.
-    buf = (rec.get("out") or "") + text
-    rec["out"] = buf if len(buf) <= OUT_TAIL_CHARS else buf[-OUT_TAIL_CHARS:]
+    with _out_lock:
+        seen = int(rec.get("out_chars") or 0)
+        if seen < OUT_HEAD_CHARS:
+            rec["out_head"] = (rec.get("out_head") or "") + text[: OUT_HEAD_CHARS - seen]
+        rec["out_chars"] = seen + len(text)
+        # Retain a true rolling tail: the newest text always lands in the buffer,
+        # trimmed from the front once it passes the cap.
+        buf = (rec.get("out") or "") + text
+        rec["out"] = buf if len(buf) <= OUT_TAIL_CHARS else buf[-OUT_TAIL_CHARS:]
     rec["last_out"] = time.monotonic()
 
 
@@ -1368,8 +1375,12 @@ _JOB_META_COLUMNS = (
 )
 
 
-def list_thread_jobs(user_id: int, thread_id: int) -> list[dict]:
-    """Running background jobs for a thread (dashboard job list)."""
+def list_thread_jobs(user_id: int, thread_id: int, known: dict | None = None) -> list[dict]:
+    """Running background jobs for a thread (dashboard job list).
+
+    known: job id -> the output_chars a page holds of that job. A live job's
+    output then starts there (output_from) when its retained tail still
+    covers that point."""
     ensure_schema()
     rows = [dict(row) for row in db.fetchall(
         f"SELECT {_JOB_META_COLUMNS} FROM command_jobs"
@@ -1404,6 +1415,9 @@ def list_thread_jobs(user_id: int, thread_id: int) -> list[dict]:
     out: list[dict] = []
     for row in rows:
         rec = live[row["id"]]
+        if rec is not None:
+            with _out_lock:
+                rec = dict(rec)
         elapsed = None
         if rec is not None and rec.get("started"):
             elapsed = int((time.monotonic() - float(rec["started"])) * 1000)
@@ -1426,6 +1440,10 @@ def list_thread_jobs(user_id: int, thread_id: int) -> list[dict]:
             item.update(_monitor_trace_fields(live_rec))
             item["kind"] = "monitor"
             item["name"] = "monitor"
+        held = (known or {}).get(row["id"])
+        if rec is not None and item["output_chars_exact"] and held is not None and item["output_start"] <= held <= item["output_chars"]:
+            item["output"] = item["output"][held - item["output_start"]:]
+            item["output_from"] = held
         out.append(item)
     return out
 
@@ -1472,7 +1490,6 @@ def recent_terminal_jobs(user_id: int, thread_id: int, window_s: int = 300) -> l
     result = []
     for row in rows:
         _, view = render(dict(row), tool="get_command_output")
-        view["out"] = view["output"]  # compatibility alias; no hidden 400-char clipping
         result.append(view)
     return result
 

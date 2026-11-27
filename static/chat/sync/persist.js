@@ -92,7 +92,9 @@ export function createPersist(ctx) {
         sidebar.upsertLocal(created);
         sidebar.renderHistory();
       } else {
-        const updated = await net.api("/chat/threads/" + targetId, { method: "PATCH", body: JSON.stringify(payload) });
+        // Only the revision and the list row are read: a transcript sent back
+        // comes packed.
+        const updated = await net.api("/chat/threads/" + targetId + "?pack=1", { method: "PATCH", body: JSON.stringify(payload) });
         if (expectedGeneration !== S.generation || S.currentId !== targetId) return;
         if (S.historyRevision === S.serverRevision) S.historyRevision = updated.revision;
         S.serverRevision = updated.revision;

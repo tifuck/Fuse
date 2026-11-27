@@ -327,8 +327,6 @@ def _view(row, *, include_messages: bool = False, coding: bool = False, conn=Non
         data["project_logo_url"] = hosts.logo_url(data["project_id"], row["project_logo_rev"] if "project_logo_rev" in keys else 0)
         data["project_archived"] = bool(row["project_archived"]) if "project_archived" in keys and row["project_archived"] else False
     if include_messages:
-        data["context"] = _legacy_text(row["context"], CONTEXT_MAX)
-        data["tools"] = parse_thread_tools(row["tools"])
         data["messages"] = parse_messages(row["messages"])
         from . import context_compact as ctxmod, context_meter
 
@@ -371,36 +369,45 @@ def _view(row, *, include_messages: bool = False, coding: bool = False, conn=Non
             _store_meter(meter_key, meter, preamble)
         else:
             meter, preamble = cached
-        if preamble:
-            from .chat_views import compaction_cut
-            data["context_cut"] = compaction_cut(data["messages"], state)
-        state["meter"] = meter
-        effort = state.get("effort") if isinstance(state.get("effort"), dict) else {}
-        data["reasoning_effort"] = (effort.get("value") or "") if effort.get("model") == model else ""
-        data["compaction"] = {
-            "meter": meter,
-            "strategy": state.get("strategy"),
-            "auto": state.get("auto"),
-            "warn_ratio": state.get("warn_ratio"),
-            "auto_ratio": state.get("auto_ratio"),
-            "keep_tail": state.get("keep_tail"),
-            "window_override": state.get("window_override"),
-            "cache": cache_watch.public(state.get("cache")),
-            "pool": pool_badge.public(row["user_id"], state.get("pool")),
-            "checkpoints": [
-                {
-                    "id": cp.get("id"),
-                    "created_at": cp.get("created_at"),
-                    "strategy": cp.get("strategy"),
-                    "trigger": cp.get("trigger"),
-                    "tokens_before": cp.get("tokens_before"),
-                    "tokens_after": cp.get("tokens_after"),
-                }
-                for cp in (state.get("checkpoints") or [])
-                if isinstance(cp, dict)
-            ],
-        }
+        _open_fields(data, row, state, meter, preamble, data["messages"])
     return data
+
+
+def _open_fields(data, row, state, meter, preamble, messages) -> None:
+    """What an open chat's view carries besides its messages: settings, the
+    compaction state and the context meter the caller measured."""
+    data["context"] = _legacy_text(row["context"], CONTEXT_MAX)
+    data["tools"] = parse_thread_tools(row["tools"])
+    if preamble:
+        from .chat_views import compaction_cut
+        data["context_cut"] = compaction_cut(messages, state)
+    state["meter"] = meter
+    model = data.get("model") or ""
+    effort = state.get("effort") if isinstance(state.get("effort"), dict) else {}
+    data["reasoning_effort"] = (effort.get("value") or "") if effort.get("model") == model else ""
+    data["compaction"] = {
+        "meter": meter,
+        "strategy": state.get("strategy"),
+        "auto": state.get("auto"),
+        "warn_ratio": state.get("warn_ratio"),
+        "auto_ratio": state.get("auto_ratio"),
+        "keep_tail": state.get("keep_tail"),
+        "window_override": state.get("window_override"),
+        "cache": cache_watch.public(state.get("cache")),
+        "pool": pool_badge.public(row["user_id"], state.get("pool")),
+        "checkpoints": [
+            {
+                "id": cp.get("id"),
+                "created_at": cp.get("created_at"),
+                "strategy": cp.get("strategy"),
+                "trigger": cp.get("trigger"),
+                "tokens_before": cp.get("tokens_before"),
+                "tokens_after": cp.get("tokens_after"),
+            }
+            for cp in (state.get("checkpoints") or [])
+            if isinstance(cp, dict)
+        ],
+    }
 def list_threads(user_id: int, *, archived: bool | None = False) -> list[dict]:
     if archived is None:
         rows = db.fetchall(
