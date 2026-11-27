@@ -152,11 +152,11 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-doc
 html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-qrow .chat-queue-menu .chat-queue-action:is(:hover, :focus-visible) { background: var(--con-hover); }
 
 @media (max-width: 640px) {
-  /* Three rows, small buttons: title with step and clock; the payload; why
-     with Deny and Allow at its end. */
+  /* Four rows: title with clock; the payload; why; the step with Deny and
+     Allow at the end. */
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask {
     grid-template-columns: 7px minmax(0, 1fr) auto auto;
-    grid-template-areas: "dot title step clock" "pay pay pay pay" "why why deny allow";
+    grid-template-areas: "dot title title clock" "pay pay pay pay" "why why why why" "step step deny allow";
     column-gap: 8px;
     row-gap: 3px;
     padding: 6px 10px 7px;
@@ -164,7 +164,7 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-doc
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock :is(.chat-ask-head, .chat-ask-actions) { display: contents; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-dot { grid-area: dot; align-self: center; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-title { grid-area: title; align-self: center; }
-  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-step { grid-area: step; justify-self: end; }
+  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-step { grid-area: step; justify-self: start; align-self: end; white-space: nowrap; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-clock { grid-area: clock; justify-self: end; height: 24px; padding: 0 2px; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-actions > [data-perm-decide="deny"] { grid-area: deny; align-self: end; justify-self: end; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-allow { grid-area: allow; align-self: end; justify-self: end; }
@@ -174,11 +174,12 @@ html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-doc
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-glyph { display: inline-block; margin-right: 6px; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-value { display: inline; word-break: normal; overflow-wrap: anywhere; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-note { display: inline; margin-left: 8px; white-space: normal; }
-  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-why { grid-area: why; align-self: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: calc(12px * var(--chat-text-scale, 1)); }
-  /* Who made a skill is the point of its card: never cut. */
-  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask.is-skill .chat-ask-why { display: block; overflow: visible; }
+  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-why { grid-area: why; font-size: calc(12px * var(--chat-text-scale, 1)); }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-qrow { grid-template-columns: 16px minmax(0, 1fr) auto 68px; min-height: 30px; }
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-qrow-btn { width: 30px; height: 28px; }
+}
+@media (max-width: 800px), (pointer: coarse) {
+  html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock :is(.chat-ask-step button, .chat-ask-btn) { min-width: 2.25rem; height: 2.25rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="console"] body.is-chat .chat[data-view="console"] .chat-dock .chat-ask-dot { animation: none; }

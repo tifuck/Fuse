@@ -79,7 +79,7 @@
   line-height: 1.45;
   white-space: pre;
 }
-:where(html.is-chat-root[data-chat-view="console"]) .chat-code code { display: block; padding: 0; background: none; font-size: inherit; }
+:where(html.is-chat-root[data-chat-view="console"]) .chat-code code { display: inline-block; min-width: 100%; padding: 0; background: none; font-size: inherit; }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-keyword, .hljs-selector-tag, .hljs-selector-pseudo, .hljs-doctag, .hljs-operator) { color: var(--reason); }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-title, .hljs-title.function_, .hljs-title.class_, .hljs-name, .hljs-selector-class, .hljs-selector-id) { color: var(--steel); }
 :where(html.is-chat-root[data-chat-view="console"]) :is(.chat-code, .chat-console-codepart) :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet, .hljs-attribute, .hljs-addition, .hljs-code, .hljs-link) { color: var(--brass); }
@@ -176,6 +176,7 @@
 :where(html.is-chat-root[data-chat-view="console"]) .chat-md th,
 :where(html.is-chat-root[data-chat-view="console"]) .chat-md td {
   padding: calc(0.4rem * var(--chat-text-scale, 1)) calc(0.55rem * var(--chat-text-scale, 1));
+  min-width: 10ch;
   border-bottom: 1px solid var(--line);
   text-align: left;
 }

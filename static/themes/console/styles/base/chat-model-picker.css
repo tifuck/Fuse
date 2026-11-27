@@ -173,6 +173,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+@media (pointer: coarse) {
+  :where(html.is-chat-root[data-chat-view="console"]) .chat-picker-row > [role="option"] > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+}
 :where(html.is-chat-root[data-chat-view="console"]) .chat-picker-row > [role="option"].is-selected > span { font-weight: 600; }
 :where(html.is-chat-root[data-chat-view="console"]) .chat-picker-image {
   display: inline-flex;
