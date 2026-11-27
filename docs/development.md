@@ -122,7 +122,8 @@ which adds `/sources/p/<id>/…`). Tests: sign-in, refresh and routing in
   and other pages); each theme's copy lives in `themes/<t>/styles/base/`.
   Palettes and the backdrop scene are shared in `chat-design-shared.css`,
   which `chat-design.css` (settings pages) and each theme's `design.css`
-  (/chat) import; /chat does not load `chat-design.css` itself. Each theme saves its own palette, backdrop and strength (`chat-appearance.js`,
+  (/chat) import; /chat does not load `chat-design.css` itself. Each theme
+  saves its own palette, backdrop and strength (`chat-appearance.js`,
   `fuse.chat.views.v1`, first filled from the old global keys) and its font.
   A new theme is its two folders plus a `registry.js` entry: its
   `static/themes/<t>/theme.json` (id, order, label, description, default
