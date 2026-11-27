@@ -243,6 +243,7 @@ function consoleSpinGlyph(sidebar) {
 function spinTicks(mark) {
     const slot = mark.parentElement;
     if (!mark.isConnected || !slot || slot.hidden) return false;
+    if (WIDE.matches && slot.matches(UNSHOWN_SPIN)) return false;
     const dock = [[deps.liveDock, deps.liveDockSpin], [deps.agentLiveDock, deps.agentLiveSpin], [deps.latestPill, deps.latestSpin]]
       .find(([, spin]) => spin === slot)?.[0];
     return dock ? !dock.hidden : "runSpin" in slot.dataset;
@@ -388,6 +389,11 @@ const CONSOLE_SPIN_FRAMES = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "�
 
 const CONSOLE_SPIN_STILL = "✻";
 
+// Slots this view is not showing now (styles/base/chat-history.css): the
+// sidebar's, while it is collapsed on a wide screen and not peeking. The
+// runtime's run-spin clock offers them again (setConsoleSpin) once shown.
+const UNSHOWN_SPIN = ".chat.history-collapsed:not(.history-peek, .history-peek-leave) .chat-history [data-run-spin]";
+const WIDE = window.matchMedia("(min-width: 801px)");
 const spinMarks = new Set();
 
   return { setLiveLabelText, setLivePhase, currentActivity, activityKind, liveDockMotionMs, followLiveDockSlide, hideLiveDock, consoleSpinGlyph, consoleSpinMarks, stopConsoleSpin, setConsoleSpin, syncLiveDock, activityLabel, CONSOLE_SPIN_FRAMES, CONSOLE_SPIN_STILL };
