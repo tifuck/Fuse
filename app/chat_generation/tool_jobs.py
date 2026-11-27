@@ -404,7 +404,8 @@ def _code_clip(text: str, result_id: str = "") -> str:
 
 def _interrupted(job: ToolJob) -> str:
     if not job.started:
-        return "Tool interrupted before it started: this call did not run. Send it again if it is still needed."
+        # Not "Tool interrupted …": the resume notes read that opening as an unknown outcome.
+        return "Not run: the turn was interrupted before this call started. Send it again if it is still needed."
     return "Tool interrupted mid-run: its outcome is unknown. Check its state before sending it again."
 
 

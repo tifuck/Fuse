@@ -113,8 +113,11 @@ def _gate_failure(job: ToolJob) -> str:
         return ""
     if type(code) is int and code != 0:
         return f"exited {code}"
+    from ..workspace_ops.common import _as_bool
+
     try:
-        background = json.loads(job.arguments or "{}").get("background") is True
+        # Parsed as the tool parses it, so a call it started in the background is one here too.
+        background = _as_bool(json.loads(job.arguments or "{}").get("background"))
     except (ValueError, AttributeError, RecursionError):
         background = False
     # A foreground command moved to the background has not finished yet.

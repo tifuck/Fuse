@@ -80,12 +80,14 @@ def test_a_command_after_one_moved_to_the_background_is_not_run(ssh_host):
 
 
 def test_background_commands_and_monitors_do_not_stop_later_calls(ssh_host):
-    execute = Exec({"serve": {"status": "running"}, "tail -F log": {"status": "running"}})
+    execute = Exec({"serve": {"status": "running"}, "worker": {"status": "running"}, "tail -F log": {"status": "running"}})
+    # "yes" starts a background command too (workspace_ops.common._as_bool).
     one_round(ssh_host, [call(0, "run_terminal_command", command="serve", background=True),
-                         call(1, "monitor", command="tail -F log"),
-                         call(2, "write_file", path="a.txt")], execute)
+                         call(1, "run_terminal_command", command="worker", background="yes"),
+                         call(2, "monitor", command="tail -F log"),
+                         call(3, "write_file", path="a.txt")], execute)
 
-    assert ran(execute) == ["serve", "tail -F log", "a.txt"]
+    assert ran(execute) == ["serve", "worker", "tail -F log", "a.txt"]
 
 
 def test_a_read_after_a_failed_edit_still_runs(ssh_host):
@@ -150,4 +152,5 @@ def test_a_user_stop_interrupts_the_queued_calls_instead_of_skipping_them(ssh_ho
     assert [(j.trace["status"], j.text) for j in jobs] == [("interrupted", "Tool interrupted.")] * 2
     assert all(j.trace.get("kind") != "not_run" for j in jobs)
     # The model learns the queued edit never started, and the command's outcome is unknown.
-    assert "outcome is unknown" in results[0] and "this call did not run" in results[1]
+    assert results[0].startswith("Tool interrupted mid-run") and "outcome is unknown" in results[0]
+    assert results[1] == "Not run: the turn was interrupted before this call started. Send it again if it is still needed."
