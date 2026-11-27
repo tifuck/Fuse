@@ -274,18 +274,11 @@ export function createStream(ctx) {
       } else if (["run.completed", "run.cancelled", "run.failed", "run.interrupted"].includes(event.type)) {
         const msg = S.messages.find((item) => item.id === payload.message_id);
         if (msg && payload.message) Object.assign(msg, payload.message);
-        // The run event carries every row its write changed (the replies a
-        // steer split off as updates). All applied, this view is current at
-        // the event and the reconcile below is answered unchanged; a row it
+        // Applied, this view is current at the event and the reconcile below
+        // is answered unchanged (a steered run's end keeps the thread's
+        // watermark ahead, so that one reads the thread); a reply this view
         // lacks takes the full read.
-        let applied = Boolean(msg && payload.message);
-        for (const update of payload.updates || []) {
-          const part = S.messages.find((item) => item.id === update.id);
-          if (!part) { applied = false; continue; }
-          Object.assign(part, update);
-          const article = traces.articleFor(part);
-          if (article) ui.updateAssistant(article, part, false);
-        }
+        const applied = Boolean(msg && payload.message);
         if (msg && Array.isArray(msg.permissions)) {
           msg.permissions.forEach((perm) => {
             if (perm.kind === "tool_permission" && perm.status === "pending") perm.status = "cancelled";

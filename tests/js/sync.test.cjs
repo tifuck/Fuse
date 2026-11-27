@@ -323,10 +323,6 @@ test('a turn end the view applied claims its event; a label change and a recap n
   await stream.receiveEvent({ id: 13, type: 'recap.updated', thread_id: 't', payload: { anchor_id: 'm', text: 'What happened' } });
   assert.deepEqual(S.threadRecaps, [{ anchor_id: 'm', text: 'What happened' }]);
   assert.deepEqual([calls.recaps, calls.reconcile], [1, 1]);
-  // A steer part this view does not hold: the run event does not cover the view.
-  S.activeRun = { id: 'r2', message_id: 'm', status: 'running' };
-  await stream.receiveEvent({ id: 14, type: 'run.completed', thread_id: 't', payload: { run_id: 'r2', message_id: 'm', message: { content: 'Hi again' }, updates: [{ id: 'frozen' }], revision: 6 } });
-  assert.deepEqual([S.viewCursor, S.threadWatermark, calls.reconcile], [11, 11, 2], 'the reconcile reads the thread');
 });
 
 test('a compacted patch of the open thread reopens the socket there once, then reads the thread', async () => {

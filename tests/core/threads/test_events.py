@@ -279,6 +279,24 @@ def test_the_page_that_applied_a_turn_end_reconciles_unchanged_and_still_reads_t
     assert chats.get_thread(uid, thread["id"], observed_thread_cursor=end, mark_read=True)["unchanged"] is True
 
 
+def test_a_steered_turn_end_is_read_again(fresh_db):
+    uid = make_user()
+    thread = chats.create_thread(uid, model="offline")
+    run = chat_store.start_turn(uid, thread["id"], "go", thread["revision"], None)["run"]
+    # Before any output: the part the steer froze is hidden and the finish drops it.
+    chat_store.steer_turn(uid, thread["id"], "and this", "steer-1")
+    cursor = chat_store.cursor(uid)
+
+    chat_store.finish_run(run["id"], {"content": "stopped"}, "cancelled")
+
+    published = events(uid, cursor)
+    assert [e["type"] for e in published] == ["run.cancelled", "thread.updated"]
+    # The run event does not carry what the finish inserted or dropped: a
+    # reconcile at it reads the thread.
+    end = published[0]["id"]
+    assert "unchanged" not in chats.get_thread(uid, thread["id"], observed_cursor=end, observed_thread_cursor=end)
+
+
 def test_opening_an_unread_chat_reads_it_before_the_snapshot(fresh_db):
     uid = make_user()
     thread = chats.create_thread(uid, model="offline")
