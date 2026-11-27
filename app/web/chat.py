@@ -54,7 +54,9 @@ async def chat_page(request: Request):
             for group in available
         ]
         return {
-            "skills_bundle": skills.list_bundle(user["id"]),
+            # The Skills sheet is hidden until opened; static/skills.js reads
+            # the full list from /skills/api then (the slash menu has chat_config.skills).
+            "skills_bundle": {"lazy": True},
             "chat_config": {
                 "families": families,
                 "locked": [group["title"] for group in locked],

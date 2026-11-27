@@ -53,7 +53,9 @@
   const CATEGORIES = ["Plan", "Build", "Quality", "Design", "Docs", "Ops", "Research", "Agent"];
   // Library skills on at load, or added since, stay listed when switched off
   // until the next load, so a row never disappears under the pointer.
-  const pinned = new Set((bundle.skills || []).filter((s) => s.origin === "bundled" && s.enabled).map((s) => s.slug));
+  const pinned = new Set();
+  const pinEnabled = () => (bundle.skills || []).forEach((s) => { if (s.origin === "bundled" && s.enabled) pinned.add(s.slug); });
+  pinEnabled();
 
   function mine() {
     return (bundle.skills || []).filter((s) => s.origin !== "bundled" || s.enabled || pinned.has(s.slug));
@@ -559,5 +561,28 @@
     }
   });
 
-  renderList();
+  // The chat page inlines no list (its sheet is hidden until opened): the
+  // first open reads it, and a failed read tries again on the next open.
+  if (bundle.lazy) {
+    let reading = false;
+    const read = async () => {
+      if (root.hidden || reading || !bundle.lazy) return;
+      reading = true;
+      showErr(pageError, "");
+      try {
+        bundle = await api("/skills/api");
+        pinEnabled();
+        renderList();
+        if (inline && !library.hidden) renderLibrary();
+      } catch (err) {
+        showErr(pageError, err.message);
+      } finally {
+        reading = false;
+      }
+    };
+    new MutationObserver(read).observe(root, { attributes: true, attributeFilter: ["hidden"] });
+    read();
+  } else {
+    renderList();
+  }
 })();
