@@ -71,21 +71,29 @@ function activityEntriesHtml(entries, msg, live, blockKey, blockLive = false) {
 // failed or is running), how many there were, what they changed and how long
 // they took. The line opens the calls. A burst without calls prints bare.
 function burstHtml(traces, live, open, aid) {
-    const calls = traces.filter((trace) => deps.ccToolClass(trace)?.kind !== "silent");
+    // A run_code's own calls are inside its call (its row counts them, its
+    // time holds theirs): only what they changed adds up here.
+    const calls = traces.filter((trace) => !trace.parent && deps.ccToolClass(trace)?.kind !== "silent");
     if (!calls.length) return "";
     let plus = 0, minus = 0, failed = 0, ms = 0, now = null;
+    // The calls that changed a file, a run_code for the edits its code made.
+    const changed = new Set();
+    for (const trace of traces) {
+      const p = deps.toolPresentation(trace, live);
+      if ((trace.name !== "search_replace" && trace.name !== "write_file") || p.failed || p.running) continue;
+      const counts = deps.consoleEditCounts(trace);
+      plus += counts.added;
+      minus += counts.removed;
+      changed.add(trace.parent ? traces.find((t) => t.id === trace.parent) : trace);
+    }
     const ticks = calls.map((trace) => {
       const p = deps.toolPresentation(trace, live);
-      const bad = p.failed || (trace.name === "run_terminal_command" && p.state === "warning" &&
-        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError);
-      const change = trace.name === "search_replace" || trace.name === "write_file";
+      // A call the step gate held back did not run, so it did not fail.
+      const bad = trace.kind !== "not_run" && (p.failed || (trace.name === "run_terminal_command" && p.state === "warning" &&
+        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError));
+      const change = changed.has(trace);
       if (bad) failed += 1;
       else if (p.running) now = trace;
-      else if (change) {
-        const counts = deps.consoleEditCounts(trace);
-        plus += counts.added;
-        minus += counts.removed;
-      }
       const took = Number(trace.latency_ms ?? trace.duration_ms);
       if (Number.isFinite(took) && took > 0) ms += took;
       return `<i class="${p.running ? "is-live" : bad ? "is-bad" : p.interrupted ? "is-stop" : change ? "is-change" : trace.name === "run_terminal_command" ? "is-run" : ""}"></i>`;

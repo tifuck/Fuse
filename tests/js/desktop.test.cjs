@@ -164,7 +164,7 @@ test('rendering: the fallback notice shows once', () => {
 });
 
 test('a script row splits what the model got from its source and counts its calls', async () => {
-  for (const view of ['console', 'desktop']) {
+  for (const view of ['console', 'tail', 'desktop']) {
     const { codeRunParts } = (await import(`../../static/themes/${view}/tool-formatting.js`)).create({});
     const now = codeRunParts({ output: '17\n[Fuse: 41 calls: glob×1, read_file×40]', code: 'return 17;' });
     assert.deepEqual(now, { result: '17', code: 'return 17;', calls: [['glob', 1], ['read_file', 40]] }, view);
@@ -174,5 +174,8 @@ test('a script row splits what the model got from its source and counts its call
     assert.deepEqual(before, { result: 'ok', code: 'await grep("x");\n\nreturn "ok";', calls: [['grep', 1]] }, `${view}: a row saved with its source in the output`);
     const failed = codeRunParts({ status: 'error', output: 'Error: line 1: SyntaxError\nNo tool calls finished before the error.\n\nreturn (;' });
     assert.deepEqual(failed, { result: 'Error: line 1: SyntaxError\nNo tool calls finished before the error.', code: 'return (;', calls: [] }, view);
+    const page = codeRunParts({ output: '3\n[Fuse: 2 calls: grep×2]\n[Fuse: 1 call: read_result×1]', code: 'return await read_result("r1");' });
+    assert.deepEqual(page, { result: '3\n[Fuse: 2 calls: grep×2]', code: 'return await read_result("r1");', calls: [['read_result', 1]] },
+      `${view}: a kept page holding an earlier run's calls line counts this run's`);
   }
 });

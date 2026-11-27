@@ -724,12 +724,13 @@ function searchQueries(trace) {
 
 // run_code: its output is what the model got, the value then "[Fuse: …]"
 // lines (code_mode._calls_line, with the exact counts: reads past 40 draw
-// no row). Rows from before the source had its own field carry it after
-// the first blank line past those lines (or past the error).
+// no row). The last such line is the run's own: a value can hold an earlier
+// run's (a read_result page). Rows from before the source had its own field
+// carry it after the first blank line past those lines (or past the error).
 function codeRunParts(trace) {
     const text = String(trace?.output || "");
     const lines = text.split("\n");
-    const at = lines.findIndex((line) => /^\[Fuse: (\d+ calls?: |no tool calls\])/.test(line));
+    const at = lines.findLastIndex((line) => /^\[Fuse: (\d+ calls?: |no tool calls\])/.test(line));
     const calls = at < 0 ? [] : [...lines[at].matchAll(/(\w+)×(\d+)/g)].map((m) => [m[1], Number(m[2])]);
     let end = at + 1;
     while (at >= 0 && end < lines.length && lines[end].startsWith("[Fuse: ")) end += 1;

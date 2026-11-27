@@ -19,11 +19,15 @@ function ccTurnLineHtml(msg, latest) {
     const files = new Set();
     (msg.tools || []).forEach((trace) => {
       if (!trace || deps.ccToolClass(trace)?.kind === "silent") return;
-      calls += 1;
       const p = deps.toolPresentation(trace, false);
-      if (p.failed || (trace.name === "run_terminal_command" && p.state === "warning" &&
-        deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError)) failed += 1;
-      else if (trace.name === "search_replace" || trace.name === "write_file") {
+      // A run_code's own calls are inside its call: only their edits count.
+      // A call the step gate held back did not run, so it did not fail.
+      if (!trace.parent) {
+        calls += 1;
+        if (trace.kind !== "not_run" && (p.failed || (trace.name === "run_terminal_command" && p.state === "warning" &&
+          deps.ccExitMeaning(deps.displayCommand(trace), deps.shellExitCode(trace)).isError))) failed += 1;
+      }
+      if (!p.failed && (trace.name === "search_replace" || trace.name === "write_file")) {
         const counts = deps.consoleEditCounts(trace);
         files.add(String(trace.path || trace.id));
         plus += counts.added;
