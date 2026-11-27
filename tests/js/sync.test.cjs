@@ -56,7 +56,8 @@ function baseState(overrides = {}) {
 function makeApply(calls = {}) {
   const paint = createPaint({ traces: stub({ runIsActive }) });
   return createApply(deps({
-    transcript: stub({ captureThreadViewport: () => ({}), visibleRecaps: () => [], viewMessages: paint.viewMessages, paint: () => { calls.paint = (calls.paint || 0) + 1; } }),
+    transcript: stub({ captureThreadViewport: () => ({}), visibleRecaps: () => [], viewMessages: paint.viewMessages, paint: () => { calls.paint = (calls.paint || 0) + 1; },
+      syncAssistant: () => { calls.update = (calls.update || 0) + 1; } }),
     ui: stub({ updateAssistant: () => { calls.update = (calls.update || 0) + 1; } }),
   }));
 }
