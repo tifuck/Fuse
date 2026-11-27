@@ -638,8 +638,9 @@ RETRY_DIFF = "@@ -2,3 +2,3 @@\n   \"timeout_ms\": 30000,\n-  \"retries\": 3,\n+ 
 
 def code_thread() -> list[dict]:
     """run_code rows: a run with each kind of call under it, a bulk run of
-    40 reads, a run whose code failed, one saved before description was
-    required and one the user stopped mid-way."""
+    40 reads, a run whose code failed, one stopped by a failed sh command,
+    one saved before description was required and one the user stopped
+    mid-way."""
     run = tool("run_code", description="Find slow retry policies and lower them", output=CODE_RESULT, code=CODE, duration_ms=1840)
     calls = [
         tool("glob", parent=run["id"], pattern="services/*.json", path=PROJECT,
@@ -664,6 +665,22 @@ def code_thread() -> list[dict]:
                   error="line 1: SyntaxError: missing ) after argument list",
                   output="Error: line 1: SyntaxError: missing ) after argument list\nNo tool calls finished before the error.",
                   code="return files.map((p) => JSON.parse(p);")
+    sh_out = ("FAIL src/client.test.js\n  ● client › gives up after the last retry\n    ReferenceError: RETRIES is not defined\n"
+              "Tests: 1 failed, 11 passed, 12 total\n")
+    sh_error = f"sh npm test: exited 1\n    at line 2:1\n--- output ---\n{sh_out}"
+    sh_failed = tool("run_code", status="error", kind="command_failed", description="Rename RETRIES, test and commit",
+                     error=sh_error, duration_ms=2300,
+                     output=(f"Error: {sh_error}\nCalls that finished before the error (2):\n- search_replace src/retry.js: done\n"
+                             "- run_terminal_command npm test: done, exit 1"),
+                     code='await search_replace({path: "src/retry.js", old_string: "RETRIES", new_string: "MAX_RETRIES", '
+                          'replace_all: true});\nawait sh("npm test");\nawait sh(\'git commit -am "Rename RETRIES"\');\n'
+                          'return "committed";')
+    sh_calls = [
+        tool("search_replace", parent=sh_failed["id"], path=f"{PROJECT}/src/retry.js", lines_added=1, lines_removed=1,
+             preview="@@ -1,3 +1,3 @@\n-export const RETRIES = 3;\n+export const MAX_RETRIES = 3;\n "),
+        tool("run_terminal_command", parent=sh_failed["id"], command="npm test", cwd=PROJECT, exit_code=1,
+             execution_duration_ms=2100, output=sh_out),
+    ]
     bare = tool("run_code", duration_ms=140, output=" M app/net.py\n?? tests/test_net.py\n[Fuse: 1 calls: run_terminal_command×1]",
                 code='return (await run_terminal_command("git status --short")).output;')
     bare_calls = [tool("run_terminal_command", parent=bare["id"], command="git status --short", cwd=PROJECT, exit_code=0,
@@ -679,7 +696,7 @@ def code_thread() -> list[dict]:
         user("Lower the retry count on any service whose worst-case wait is over a minute, then run the checks."),
         reply("Scanning the service configs in one pass.\n\n", run, *calls,
               "One service was over a minute (`services/a.json`, 30 s × 4 tries); its retries are now 1 and the checks pass.\n\n",
-              failed, bulk, *bulk_calls, "There are 17 TODOs across the 40 modules.\n\n", bare, *bare_calls,
+              failed, sh_failed, *sh_calls, bulk, *bulk_calls, "There are 17 TODOs across the 40 modules.\n\n", bare, *bare_calls,
               "Two files are uncommitted.", minutes_ago=5, elapsed_s=41),
         user("Bump the version to 2.4.0 and build it."),
         reply("Bumping the version and building in one pass.\n\n", stopped, *stopped_calls, minutes_ago=3, elapsed_s=12,
