@@ -646,10 +646,12 @@ export function createThreads(ctx) {
               // Only a 404 means it is gone: a failed refetch or retry left
               // the chat on the server, so it must stay in the list.
               try {
-                const fresh = await net.api("/chat/threads/" + id);
+                // The 409 names the current revision; reading the whole chat
+                // for it is the fallback.
+                const revision = Number.isSafeInteger(error.data?.revision) ? error.data.revision : (await net.api("/chat/threads/" + id + "?pack=1")).revision;
                 await net.api("/chat/threads/" + id, {
                   method: "DELETE",
-                  body: JSON.stringify({ expected_revision: fresh.revision, command_id: newSession() }),
+                  body: JSON.stringify({ expected_revision: revision, command_id: newSession() }),
                 });
               } catch (retryError) {
                 if (retryError.status === 404) {

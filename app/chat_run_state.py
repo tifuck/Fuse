@@ -172,11 +172,15 @@ def touch_run(run_id: str) -> None:
 _root_admission_lock = threading.Lock()
 
 
-def start_turn(*args, **kwargs):
+def start_turn(user_id, thread_id, *args, reply=None, **kwargs):
+    """reply: what result["thread"] holds. None: nothing, for callers that
+    only start the run. "thread": the full view, read after the commit.
+    "tail": chat_views.turn_view, taken in the turn's transaction (a retry
+    gets the full view)."""
     pinned: list[tuple[int, str]] = []
     with _root_admission_lock:
         try:
-            return _start_turn(*args, _pinned=pinned, **kwargs)
+            result = _start_turn(user_id, thread_id, *args, _pinned=pinned, _tail=reply == "tail", **kwargs)
         except BaseException:
             # Covers the COMMIT too, which runs after _start_turn's body: a pin
             # for a run that never committed would keep the vault unlocked.
@@ -188,12 +192,20 @@ def start_turn(*args, **kwargs):
                 except Exception:
                     logger.exception("Failed to unpin vault after failed turn commit for %s", run_id)
             raise
+    # Outside the lock and the transaction: built inside them, a long
+    # transcript's view held up every user's turn start.
+    if reply and result["thread"] is None:
+        from . import chats
+
+        result["thread"] = chats.get_thread(user_id, thread_id)
+    return result
 
 
 def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=None, tools=None, context=None,
                 attachments=None, reasoning_effort=None, auto_title=False, invoke_skill=None, auto=False,
                 scheduled=False, coding_override=None, command_receipt_ids=None, replace_from=None,
-                schedule_id=None, schedule_manual=False, schedule_slot=None, auto_resumed_at="", wake=None, _pinned=None):
+                schedule_id=None, schedule_manual=False, schedule_slot=None, auto_resumed_at="", wake=None, _pinned=None,
+                _tail=False):
     from . import chats
 
     text = chats._text(text if text is not None else "", "text", chats.AUTO_CONTENT_MAX if auto else chats.CONTENT_MAX)
@@ -227,8 +239,7 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         fingerprint, previous = chat_tx.command(conn, user_id, command_id, identity)
         if previous is not None:
             run = chat_views.run_view(conn.execute(f"SELECT {chat_views.RUN_COLUMNS} FROM chat_runs WHERE id=? AND user_id=?", (previous["run_id"], user_id)).fetchone())
-            view_id = pk if pk is not None else previous.get("thread_id")
-            return {"thread": chat_views.thread_view(conn, user_id, view_id) if view_id is not None else None, "run": run, "idempotent": True}
+            return {"thread": None, "run": run, "idempotent": True}
         if pk is None:
             raise chats.ChatValidationError("chat not found", 404)
         thread_id = pk
@@ -501,9 +512,16 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         conn.execute("""UPDATE chat_threads SET messages=?,title=?,model=?,tools=?,context=?,compaction=?,revision=revision+1,updated_at=? WHERE id=?""",
                      (chat_tx.dumps(messages), title, request["model"], chat_tx.dumps(request["tools"]), request["thread_context"], ctxmod.dump_state(state), ts, thread_id))
         chats.unarchive_on_activity(conn, row, ts)
-        # Built before publishing, as publish_thread_view does: the events hold
-        # the user's event cursor row to commit.
-        thread = chat_views.thread_view(conn, user_id, thread_id)
+        run = {**dict(conn.execute(f"SELECT {chat_views.RUN_HEAD_COLUMNS} FROM chat_runs WHERE id=?", (run_id,)).fetchone()),
+               "request": request, "message": assistant}
+        run["cancel_requested"] = bool(run["cancel_requested"])
+        thread = None
+        if _tail:
+            # Built before publishing, as publish_thread_view does: the events
+            # hold the user's event cursor row to commit.
+            preamble = any(isinstance(msg, dict) and ctxmod.is_compact_preamble(str(msg.get("content") or "")) for msg in request_messages)
+            thread = chat_views.turn_view(conn, user_id, thread_id, messages, {**state["meter"], "history_info": history_info},
+                                          preamble, run, row["revision"])
         chat_tx.thread_event(conn, user_id, thread_id)
         eid = chat_tx.event(conn, user_id, "run.started", thread_id, {"run_id": run_id, "message_id": assistant["id"]})
         from . import chat_recaps, command_jobs as command_jobs_mod
@@ -511,10 +529,11 @@ def _start_turn(user_id, thread_id, text, expected_revision, command_id, model=N
         command_jobs_mod.mark_delivered([str(ident) for ident in command_receipt_ids or []], conn=conn,
                                         user_id=user_id, thread_id=thread_id)
         chat_tx.remember(conn, user_id, command_id, fingerprint, {"run_id": run_id, "thread_id": thread_id})
-        # run.started staled the thread's ready recaps.
-        chat_recaps.attach(conn, user_id, thread_id, thread)
-        chat_views._stamp_cursors(thread, user_id, thread_id, eid, None)
-        return {"thread": thread, "run": thread["run"], "idempotent": False}
+        if thread is not None:
+            # run.started staled the thread's ready recaps.
+            thread["recaps"] = chat_recaps.attach(conn, user_id, thread_id, {"messages": messages})["recaps"]
+            chat_views._stamp_cursors(thread, user_id, thread_id, eid, None)
+        return {"thread": thread, "run": run, "idempotent": False}
 
 
 def wake_candidates(user_id, thread_id):

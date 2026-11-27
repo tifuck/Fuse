@@ -122,10 +122,21 @@ export function createJobs(ctx) {
       renderJobsList();
     }
     const ticket = jobsRequest = { tid, gen };
+    // Finished jobs come once; a running job's output comes from where this
+    // view's copy ends (output_from) and is joined to it here.
+    const priors = new Map(S.jobsRows.map((job) => [String(job.id), job]));
+    const known = [...priors.values()].filter((job) => job.output_chars_exact && typeof job.output === "string").map((job) => job.id + ":" + job.output_chars);
+    const done = [...S.completedJobs.keys()].slice(-200);
+    const query = (known.length ? "&known=" + encodeURIComponent(known.join(",")) : "") + (done.length ? "&done=" + encodeURIComponent(done.join(",")) : "");
     try {
-      const data = await net.api("/chat/threads/" + encodeURIComponent(tid) + "/jobs");
+      const data = await net.api("/chat/threads/" + encodeURIComponent(tid) + "/jobs" + query.replace("&", "?"));
       if (tid !== S.currentId || gen !== S.generation) return;
-      S.jobsRows = Array.isArray(data.jobs) ? data.jobs : [];
+      S.jobsRows = (Array.isArray(data.jobs) ? data.jobs : []).map((job) => {
+        if (job.output_from == null) return job;
+        const { output_from: _, ...rest } = job;
+        const text = String(priors.get(String(job.id))?.output || "") + job.output;
+        return { ...rest, output: text.slice(Math.max(0, text.length - Number(job.output_retained_chars))) };
+      });
       S.jobsThreadId = tid;
       renderJobsList();
       live.syncAgentsUi();

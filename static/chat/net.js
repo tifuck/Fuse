@@ -164,6 +164,7 @@ export function createNet(ctx) {
       const msg = typeof detail === "string" ? detail : typeof data.error === "string" ? data.error : data.error && data.error.message;
       const requestError = new Error(msg || `Request failed (${res.status})`);
       requestError.status = res.status;
+      requestError.data = data;
       throw requestError;
     }
     return data;

@@ -164,7 +164,7 @@ def test_a_durable_twin_of_a_boot_checkpoint_stops_before_the_held_request():
 def test_compaction_waits_for_a_running_turn(fresh_db):
     uid = make_user()
     thread = _long_chat(uid)
-    current = chat_store.start_turn(uid, thread["id"], "busy", thread["revision"], None)["thread"]
+    current = chat_store.start_turn(uid, thread["id"], "busy", thread["revision"], None, reply="thread")["thread"]
 
     with pytest.raises(ChatValidationError) as refused:
         chat_store.prepare_compact(uid, thread["id"], current["revision"], None)

@@ -3,13 +3,14 @@
 Sample for the async pattern: a real run through chat_runs and the generation
 loop, the provider faked at app.api.invoke_chat (tests.core.helpers).
 """
+import threading
 from unittest.mock import patch
 
 import pytest
 
 from app import chat_runs, chat_store, chats
 from app.chats import ChatValidationError
-from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames
+from tests.core.helpers import fake_provider, frame, quick_user, run_async, run_turn, text_frames, wait_until
 
 from ._support import run_row
 
@@ -100,10 +101,41 @@ def test_only_one_active_root_run_per_thread(fresh_db):
 def test_a_retried_turn_command_starts_one_run(fresh_db):
     uid = quick_user()
     thread = chats.create_thread(uid, model="offline", tools=[])
-    first = chat_store.start_turn(uid, thread["id"], "hello", thread["revision"], "turn-cmd-1")
+    first = chat_store.start_turn(uid, thread["id"], "hello", thread["revision"], "turn-cmd-1", reply="thread")
     # The client lost the ACK and retries with the revision it refreshed since.
     again = chat_store.start_turn(uid, thread["id"], "hello", first["thread"]["revision"], "turn-cmd-1")
 
     assert again["idempotent"] is True
     assert again["run"]["id"] == first["run"]["id"]
     assert [m["content"] for m in chats.get_thread(uid, thread["id"])["messages"] if m["role"] == "user"] == ["hello"]
+
+
+def test_a_turn_start_does_not_wait_for_another_turns_view(fresh_db):
+    first, second = quick_user("one@core.test"), quick_user("two@core.test")
+    slow = chats.create_thread(first, model="offline", tools=[])
+    other = chats.create_thread(second, model="offline", tools=[])
+    building, release = threading.Event(), threading.Event()
+    real = chats.get_thread
+
+    def held_view(user_id, thread_id, **kwargs):
+        if user_id == first:
+            building.set()
+            release.wait(10)
+        return real(user_id, thread_id, **kwargs)
+
+    with patch.object(chats, "get_thread", held_view):
+        starter = threading.Thread(target=chat_store.start_turn, args=(first, slow["id"], "long chat", slow["revision"], None),
+                                   kwargs={"reply": "thread"})
+        starter.start()
+        try:
+            wait_until(building.is_set)
+            # The first turn is committed and building its view: another
+            # user's turn is admitted meanwhile.
+            started = []
+            threading.Thread(target=lambda: started.append(
+                chat_store.start_turn(second, other["id"], "hi", other["revision"], None)["run"]), daemon=True).start()
+            wait_until(lambda: started, message="the second turn waited for the first one's view")
+            assert started[0]["status"] == "queued"
+        finally:
+            release.set()
+            starter.join(10)
