@@ -38,6 +38,9 @@
   let lastPainted = "";
   let checkTimer = 0;
   let paintFrame = 0;
+  let metricsFrame = 0;
+  // The mirror's lines as drawn: { html, node }, one span each.
+  let mirrorLines = [];
   let popIndex = 0;
   let popIssue = null;
   let popSuggestions = [];
@@ -534,6 +537,37 @@
     mirror.scrollLeft = input.scrollLeft;
   }
 
+  // One span per line (`parts`), and only lines whose HTML changed are
+  // replaced: a keystroke restyles its own line, not the whole message.
+  function fillMirror(mirror, parts) {
+    let kept = mirrorLines;
+    // Written by anyone else since: start over.
+    if (mirror.childNodes.length !== (kept.length ? kept.length + 1 : 0) || kept.some((line) => line.node.parentNode !== mirror)) {
+      mirror.textContent = "";
+      kept = [];
+    }
+    if (!parts.length) {
+      if (kept.length) mirror.textContent = "";
+      mirrorLines = [];
+      return;
+    }
+    if (!kept.length) mirror.append("\n");
+    let head = 0;
+    while (head < kept.length && head < parts.length && kept[head].html === parts[head]) head += 1;
+    let tail = 0;
+    while (tail < kept.length - head && tail < parts.length - head
+      && kept[kept.length - 1 - tail].html === parts[parts.length - 1 - tail]) tail += 1;
+    const before = tail ? kept[kept.length - tail].node : mirror.lastChild;
+    kept.slice(head, kept.length - tail).forEach((line) => line.node.remove());
+    const fresh = parts.slice(head, parts.length - tail).map((html) => {
+      const node = document.createElement("span");
+      node.innerHTML = html;
+      mirror.insertBefore(node, before);
+      return { html, node };
+    });
+    mirrorLines = kept.slice(0, head).concat(fresh, kept.slice(kept.length - tail));
+  }
+
   // The mirror behind the field: spelling marks, and through env.markup the
   // inline markdown styles. While styled, the field's own glyphs are hidden
   // (env.onStyled), so the mirror must always hold the field's current text.
@@ -550,8 +584,9 @@
     const issues = prefs().spell ? lastIssues.filter((iss) => text.slice(iss.start, iss.end) === iss.word) : [];
     let html = "";
     let styled = false;
+    let parts = null;
     // An IME's unfinished text is in the field only: show the field itself.
-    if (text && env.markup && !composing) ({ html, styled } = env.markup(text, issues));
+    if (text && env.markup && !composing) ({ html, styled, parts } = env.markup(text, issues));
     else if (text && issues.length) {
       let pos = 0;
       for (const iss of issues) {
@@ -561,7 +596,7 @@
       }
       html += escapeHtml(text.slice(pos));
     }
-    mirror.innerHTML = html ? html + "\n" : "";
+    fillMirror(mirror, !html ? [] : parts || [html]);
     if (typeof env.onStyled === "function") env.onStyled(styled);
     if (html) syncMetrics();
   }
@@ -628,7 +663,7 @@
   }
 
   function debounceCheck() {
-    paint();
+    schedulePaint();
     root.clearTimeout(checkTimer);
     const text = env && env.input ? env.input.value : "";
     const delay = text.length > 4000 ? 400 : 200;
@@ -887,9 +922,9 @@
     // with the page. Not on focus: Desktop focuses the field on load.
     input.addEventListener("input", () => { if (input.value) startDictLoad(); });
     input.addEventListener("scroll", () => {
-      if (paintFrame) return;
-      paintFrame = root.requestAnimationFrame(() => {
-        paintFrame = 0;
+      if (metricsFrame) return;
+      metricsFrame = root.requestAnimationFrame(() => {
+        metricsFrame = 0;
         syncMetrics();
       });
     });
@@ -905,7 +940,7 @@
     });
     // A change no input event announced (a value set by script) still repaints.
     const catchUp = () => { if (lastPainted !== input.value) paint(); };
-    input.addEventListener("keyup", catchUp);
+    input.addEventListener("keyup", () => { if (lastPainted !== input.value) schedulePaint(); });
     input.addEventListener("focus", catchUp);
     input.addEventListener("click", () => {
       if (composing) return;
