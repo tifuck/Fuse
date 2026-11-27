@@ -613,6 +613,18 @@ def _pool_here() -> None:
         _pool_loop = loop
 
 
+def _idle_later(kernel: _Kernel) -> None:
+    """End the kernel once it has been idle for IDLE_S, even if no other run
+    comes along to sweep it."""
+    kernel.used = _clock()
+
+    def check() -> None:
+        if _pool.get(kernel.key) is kernel and not kernel.active() and kernel.used + IDLE_S <= _clock():
+            kernel.kill(f"it was idle for {IDLE_S // 60} minutes")
+
+    asyncio.get_running_loop().call_later(IDLE_S + 1, check)
+
+
 async def _kernel(key) -> tuple[_Kernel | None, str, dict | None]:
     """The chat's kernel, started if needed: (kernel, a restart note for the
     run, None) or (None, "", why not)."""
@@ -876,8 +888,12 @@ async def run(arguments: str, *, call, paused=None, owner: tuple = (), kernel=No
         return await _go(one, code, rec, _timeout_ms(args.get("timeout")) / 1000, background,
                          args.get("background") is True, shells or {}, note)
     finally:
+        if not one.detached:
+            k.runs.pop(one.n, None)
         if kernel is None:
             k.kill("")
+        else:
+            _idle_later(k)
 
 
 async def _go(one: _Run, code: str, rec: dict, timeout_s: float, background: Background | None,
@@ -934,6 +950,8 @@ async def _detach(one: _Run, code: str, rec: dict, background: Background, note:
             await asyncio.shield(one.stop("its background job was stopped"))
             raise
         stopped = await one.wind_down()
+        one.k.runs.pop(one.n, None)
+        _idle_later(one.k)
         text, trace = _result(code, rec, outcome, kind, one, stopped, note)
         if len(text) > BACKGROUND_CHARS:
             calls = _calls_line(one.done, stopped)
