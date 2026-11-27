@@ -34,6 +34,17 @@ function paintedMarkup(el) {
   return copy.outerHTML;
 }
 
+const ROW_BLOCKS = new Set(["thread", "draft", "project"]);
+
+// A list block's place (what it is, and what decides the section, group or
+// heading the theme draws above it) and its whole content.
+function blockSigs(block) {
+  const all = JSON.stringify(block);
+  if (!ROW_BLOCKS.has(block.type)) return { place: all, row: "" };
+  const { item, row } = block;
+  return { place: JSON.stringify([block.type, item.id, item.draft, item.host_id, item.host_alias, row.grouped, row.meta?.host]), row: all };
+}
+
 function nodeKey(el, markup) {
   if (!el.hasAttribute("data-history-item")) return "html:" + markup;
   return "row:" + ["thread", "draft", "project"].map((k) => el.dataset[k] ?? "").join("|");
@@ -83,6 +94,7 @@ export function createRender(ctx) {
   const paintedFrom = new WeakMap();
   let paintedHtml = "";
   let paintedNodes = [];
+  let paintedSigs = [];
   let historyFrame = 0;
 
     function providerLogo(type) {
@@ -400,12 +412,51 @@ export function createRender(ctx) {
     }
   }
 
+    // Only rows changed, and none came, went, moved or changed section: each
+  // is drawn on its own and swapped in, instead of drawing and parsing the
+  // whole list. A row is the last element the theme draws for its block (a
+  // heading may come first), and the k-th row block is the k-th row node.
+  function patchRows(blocks, sigs) {
+    if (sigs.length !== paintedSigs.length) return false;
+    const rows = paintedNodes.filter((node) => node.nodeType === 1 && node.hasAttribute("data-history-item"));
+    const swaps = [];
+    let k = -1;
+    for (let i = 0; i < sigs.length; i += 1) {
+      if (sigs[i].place !== paintedSigs[i].place) return false;
+      if (ROW_BLOCKS.has(blocks[i].type)) k += 1;
+      if (sigs[i].row === paintedSigs[i].row) continue;
+      const tpl = document.createElement("template");
+      tpl.innerHTML = ui.historyListHtml([blocks[i]]);
+      const fresh = tpl.content.lastElementChild;
+      const old = rows[k];
+      if (!fresh || !old || !fresh.hasAttribute("data-history-item") || nodeKey(fresh) !== nodeKey(old)) return false;
+      swaps.push([old, fresh]);
+    }
+    paintedSigs = sigs;
+    if (!swaps.length) return true;
+    for (const [old, fresh] of swaps) {
+      const markup = paintedMarkup(fresh);
+      if (paintedFrom.get(old) === markup) continue;
+      paintedFrom.set(fresh, markup);
+      if (fresh.hasAttribute("data-pinned")) fresh.addEventListener("touchmove", vetoPinScroll, { passive: false });
+      old.replaceWith(fresh);
+      paintedNodes[paintedNodes.indexOf(old)] = fresh;
+    }
+    // The whole list's markup is no longer what is drawn.
+    paintedHtml = "";
+    syncHistoryFooter();
+    return true;
+  }
+
     function paint(blocks) {
     const list = S.historyList;
-    const html = ui.historyListHtml(blocks);
     const kids = list.childNodes;
-    if (html === paintedHtml && kids.length === paintedNodes.length &&
-      paintedNodes.every((node, i) => kids[i] === node && paintedFrom.has(node))) return;
+    const intact = kids.length === paintedNodes.length && paintedNodes.every((node, i) => kids[i] === node && paintedFrom.has(node));
+    const sigs = blocks.map(blockSigs);
+    if (intact && patchRows(blocks, sigs)) return;
+    paintedSigs = sigs;
+    const html = ui.historyListHtml(blocks);
+    if (html === paintedHtml && intact) return;
     const tpl = document.createElement("template");
     tpl.innerHTML = html;
     const spare = new Map();
