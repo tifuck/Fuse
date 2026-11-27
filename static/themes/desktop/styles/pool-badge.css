@@ -85,7 +85,8 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-pool-manage { flex: none; margin-left: auto; color: var(--dk-link); font: 500 12px/1.4 var(--sans); text-decoration: none; }
   @media (hover: hover) { & .chat-pool-manage:hover { text-decoration: underline; text-underline-offset: 3px; } }
   & .chat-pool-manage:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 2px; border-radius: 3px; }
-  & .chat-pool-menu.is-sheet .chat-pool-line { grid-template-columns: minmax(0, 1fr) 3.5rem 2.5rem 5.25rem; min-height: 2.5rem; padding: 0 0.6rem; }
+  /* On a narrow phone the bar gives way before the account's name. */
+  & .chat-pool-menu.is-sheet .chat-pool-line { grid-template-columns: minmax(5rem, 3fr) minmax(2rem, 1fr) 2.5rem 5.25rem; min-height: 2.5rem; padding: 0 0.6rem; }
   /* The card's foot: Sharing (opens the sharing panel) and the Sources link. */
   & .chat-pool-share { display: inline-flex; align-items: center; gap: 0.4rem; height: 1.6rem; margin: 0 0 0 -0.4rem; padding: 0 0.4rem; border: 0; border-radius: 6px; background: none; color: var(--dk-mute); font: 500 12px/1 var(--sans); cursor: pointer; }
   & .chat-pool-share b { color: var(--dk-text); font-weight: 600; }

@@ -80,7 +80,7 @@
   line-height: 1.45;
   white-space: pre;
 }
-:where(html.is-chat-root[data-chat-view="desktop"]) .chat-code code { display: block; padding: 0; background: none; font-size: inherit; }
+:where(html.is-chat-root[data-chat-view="desktop"]) .chat-code code { display: inline-block; min-width: 100%; padding: 0; background: none; font-size: inherit; }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is(.chat-code, .dk-code-part) :is(.hljs-keyword, .hljs-selector-tag, .hljs-selector-pseudo, .hljs-doctag, .hljs-operator) { color: #9bc5d2; }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is(.chat-code, .dk-code-part) :is(.hljs-title, .hljs-title.function_, .hljs-title.class_, .hljs-name, .hljs-selector-class, .hljs-selector-id) { color: #a9c9b7; }
 :where(html.is-chat-root[data-chat-view="desktop"]) :is(.chat-code, .dk-code-part) :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet, .hljs-attribute, .hljs-addition, .hljs-code, .hljs-link) { color: #d0b486; }

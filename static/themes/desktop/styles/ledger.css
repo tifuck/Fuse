@@ -135,7 +135,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      an edit's diff counts, a failure in red. */
   & .chat-console-bundle .chat-step-label > :is(.chat-console-took, .chat-console-result-text) { flex: none; margin-left: 10px; padding-left: 0; color: var(--dk-call-quiet); font-size: 0.9em; font-variant-numeric: tabular-nums; }
   & .chat-console-bundle .chat-console-took > .dk-sep { display: none; }
-  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-result-text { display: block; flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+  & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-result-text { display: block; flex-shrink: 0; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
   & .chat-console-bundle .chat-step-label > .chat-console-result-text b { font-weight: 400; }
   & .chat-console-bundle .chat-step.is-console-call.is-error .chat-step-label .chat-tool-action { color: var(--dk-mute, var(--mute)); }
   & .chat-console-bundle .chat-step.is-console-call:is(.is-error, .is-interrupted) .chat-step-label > .chat-console-result-text { color: var(--call-fail); }
@@ -288,6 +288,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      row reaches the end of the scroll. */
   & .dk-call-box .chat-console-lines { display: grid; grid-template-columns: minmax(max-content, 1fr); }
   & .dk-call-note { padding: 1px 12px; border-top: 1px solid var(--dk-card-line, var(--line)); color: var(--dk-mute, var(--mute)); font: calc(0.72rem * var(--chat-text-scale, 1))/18px var(--sans); white-space: pre; overflow-x: auto; scrollbar-width: none; }
+  & .dk-call-note::-webkit-scrollbar { display: none; }
   & .dk-call-head + .dk-call-note { border-top: 0; }
   & .dk-call-note.is-stop, & .dk-call-state.is-stop { color: var(--dk-warn); }
   & .dk-call-note.is-bad { color: var(--call-fail); }

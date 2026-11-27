@@ -588,6 +588,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   }
   & .dk-out-wait { color: var(--dk-mute); font-family: var(--sans); }
   & .dk-out-picks { display: flex; flex: none; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  & .dk-out-picks::-webkit-scrollbar { display: none; }
   & .dk-out-picks:empty, &:not([data-theme-insp="sheet"]) .dk-out-picks { display: none; }
   & .dk-pick { flex: none; height: 34px; padding: 0 12px; border: 1px solid var(--dk-card-line); border-radius: 999px; background: none; color: var(--dk-text); font: 13px var(--sans); white-space: nowrap; cursor: pointer; }
   & .dk-pick.is-on { border-color: color-mix(in srgb, var(--dk-link) 45%, var(--dk-card-line)); background: color-mix(in srgb, var(--dk-link) 14%, var(--dk-card)); }

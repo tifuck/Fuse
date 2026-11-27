@@ -69,7 +69,7 @@ html[data-chat-view="desktop"] body.is-settings {
     border-right: 0;
     font-family: var(--sans);
   }
-  & .app-rail .chat-history-head { height: 36px; min-height: 36px; border-bottom: 1px solid var(--dk-card-line); }
+  & .app-rail .chat-history-head { height: auto; min-height: calc(36px + var(--safe-top)); padding-top: var(--safe-top); border-bottom: 1px solid var(--dk-card-line); }
   & .settings-shell .app-rail-nav { gap: 1px; padding: 0.35rem 8px 0.85rem; }
   & .settings-shell .app-rail-label {
     margin: 12px 8px 3px;
@@ -107,6 +107,12 @@ html[data-chat-view="desktop"] body.is-settings {
   & .settings-bar .chat-bar-title::before { content: "Fuse  /  " / ""; color: var(--mute); font-weight: 400; white-space: pre; }
   & .settings-bar .chat-history-toggle { height: 28px; min-width: 28px; padding: 0; border: 0; border-radius: 6px; color: var(--mute); }
   & .settings-bar .chat-history-toggle:hover { background: var(--dk-hover); color: var(--mist); }
+  /* Touch: the bar and the rail's head clear the notch; the toggle and the rail's links are full taps. */
+  @media (max-width: 800px), (pointer: coarse) {
+    & :is(.settings-bar.chat-bar, .app-rail .chat-history-head) { min-height: calc(2.75rem + var(--safe-top)); padding-top: var(--safe-top); }
+    & .settings-bar .chat-history-toggle { height: 44px; min-width: 44px; }
+    & .settings-shell .app-rail-nav a { min-height: 44px; }
+  }
 
   /* —— Page = the centered transcript column —— */
   & .settings-scroll {
@@ -263,6 +269,7 @@ html[data-chat-view="desktop"] body:is(.is-settings, .is-chat) {
   & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.ghost:hover { background: var(--dk-sel); }
   & :is(.settings-shell, dialog.modal, .fp-dialog) .btn:focus-visible { outline: 2px solid var(--dk-link); outline-offset: 1px; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.sm { height: 28px; padding: 0 0.7rem; font-size: 12.5px; }
+  @media (pointer: coarse) { & :is(.settings-shell, dialog.modal, .fp-dialog) .btn.sm { height: 2.5rem; } }
   & :is(.settings-shell, dialog.modal) .btn:not(.sm) { height: 32px; padding: 0 0.9rem; font-size: 13px; }
   & :is(.settings-shell, dialog.modal, .fp-dialog) :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"])), select, textarea) {
     border: 1px solid var(--dk-card-line);

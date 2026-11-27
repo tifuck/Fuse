@@ -180,6 +180,12 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-doc
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow { grid-template-columns: 16px minmax(0, 1fr) auto 68px; min-height: 30px; }
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-qrow-btn { width: 30px; height: 28px; }
 }
+/* Touch: Allow, Deny, the "Allow always" caret and the pager are full taps. */
+@media (max-width: 800px), (pointer: coarse) {
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-ask-btn { height: 2.25rem; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-ask-btn.is-caret { min-width: 2.25rem; }
+  html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-ask-step button { width: 2.25rem; height: 2.25rem; }
+}
 @media (prefers-reduced-motion: reduce) {
   html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] .chat-dock .chat-ask-dot { animation: none; }
 }

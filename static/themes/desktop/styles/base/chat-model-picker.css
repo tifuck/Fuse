@@ -173,6 +173,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Touch has no title tooltip: a long name gets a second line. */
+@media (pointer: coarse) {
+  :where(html.is-chat-root[data-chat-view="desktop"]) .chat-picker-row > [role="option"] > span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-picker-row > [role="option"].is-selected > span { font-weight: 600; }
 :where(html.is-chat-root[data-chat-view="desktop"]) .chat-picker-image {
   display: inline-flex;

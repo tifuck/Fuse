@@ -19,6 +19,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .term-grip:is(:hover, :focus-visible), & .term-dock.is-resizing .term-grip { outline: 0; background: linear-gradient(transparent 3px, var(--dk-accent) 3px, var(--dk-accent) 5px, transparent 5px); }
   & .term-head { flex: none; display: flex; align-items: center; gap: 2px; height: 34px; padding: 0 8px 0 6px; background: var(--dk-canvas); border-bottom: 1px solid var(--dk-card-line); }
   & .term-tabs { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  & .term-tabs::-webkit-scrollbar { display: none; }
   & .term-tab { flex: 0 1 auto; min-width: 2.5rem; display: flex; align-items: center; height: 26px; margin-right: 2px; border-radius: 6px; color: var(--dk-mute); }
   & .term-tab:hover { background: var(--dk-hover); }
   & .term-tab.is-active { background: var(--dk-sel); color: var(--dk-text); }

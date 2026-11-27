@@ -131,7 +131,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .dk-side {
     flex-direction: column;
     gap: 1px;
-    padding: 0 8px;
+    padding: 0 8px var(--safe-bottom, 0px);
     border-right: 0;
     background: var(--dk-side);
     color: var(--dk-text);
@@ -144,10 +144,10 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     display: flex;
     align-items: center;
     gap: 2px;
-    height: var(--chat-bar-h);
+    height: calc(var(--chat-bar-h) + var(--safe-top, 0px));
     min-height: 0;
     margin: 0 -8px 6px;
-    padding: 0 8px;
+    padding: var(--safe-top, 0px) 8px 0;
     border: 0;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
     background: none;
@@ -364,9 +364,9 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     flex-wrap: nowrap;
     align-items: center;
     gap: 2px;
-    height: var(--chat-bar-h);
+    height: calc(var(--chat-bar-h) + var(--safe-top, 0px));
     min-height: 0;
-    padding: 0 8px;
+    padding: var(--safe-top, 0px) 8px 0;
     border-bottom: 1px solid color-mix(in srgb, var(--dk-card-line) 70%, transparent);
     background: var(--dk-side);
     box-shadow: none;
@@ -470,7 +470,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
      context right) ---- */
   /* The card's edges are the transcript text's: the log's gutter, and the
      log is centred left of the scrollbar's gutter. */
-  & .chat-dock { padding: 4px var(--console-gutter) 0; background: none; }
+  & .chat-dock { padding: 4px var(--console-gutter) var(--safe-bottom, 0px); background: none; }
   /* The card itself reaches up to 20px past those edges (its controls row
      stays on them), as far as the stage has room: 4px short of its edge or
      the scrollbar. The 100% is the box's width, wherever it is used. */
@@ -655,7 +655,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
     & .dk-row2 [data-chat-attach] { left: calc(6px - var(--dk-card-out)); }
     & .dk-row2 [data-chat-send] { right: calc(8px - var(--dk-card-out)); bottom: calc(100% + var(--dk-band-gap) + 8px); }
     & .dk-row2 [data-chat-mic] { right: calc(44px - var(--dk-card-out)); }
-    & .dk-group-r { margin-right: -10px; }
+    & .dk-group-r { margin-right: -8px; }
     & :is(.dk-tb.is-icon, .dk-ring) { width: 36px; height: 36px; }
     & :is(.dk-tb[data-perm-chip], .dk-model .chat-picker-btn) { height: 36px; }
     & .dk-send { width: 32px; height: 32px; }
@@ -898,13 +898,11 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
 
   /* ---- Phones: the inspector is a full-screen sheet, the sidebar a drawer ---- */
   @media (max-width: 800px) {
-    /* Notched phones: the top bar, the drawer's head and foot and the composer clear the insets. */
     /* A 44px row plus the hairline, the bar and the drawer's head alike. */
     & { --chat-bar-h: 45px; }
-    & :is(.dk-head, .dk-side-head) { height: calc(45px + var(--safe-top, 0px)); min-height: 0; padding: var(--safe-top, 0px) 4px 0; }
-    & .dk-side { padding-bottom: var(--safe-bottom, 0px); }
-    & .chat-dock { padding-bottom: var(--safe-bottom, 0px); }
-    & .chat-dock { padding-inline: 8px; padding-top: 4px; }
+    /* A literal 45px: the runtime publishes the bar's measured height (inset included) as --chat-bar-h here. */
+    & :is(.dk-head, .dk-side-head) { height: calc(45px + var(--safe-top, 0px)); padding-inline: 4px; }
+    & .chat-dock { padding-inline: 8px; }
     & .dk-model .chat-picker-btn { max-width: 10rem; }
     & .dk-model .chat-picker-btn > :is(span, strong, b) { display: inline; overflow: hidden; text-overflow: ellipsis; }
     & .dk-row { height: 44px; }
