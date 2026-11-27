@@ -33,8 +33,19 @@ A sample's calls are printed with --show: check a surprising rate there
 before trusting it (a loop the classifier missed once read as one per step).
 Seeded cases start from a made-up history; the "-tip" ones add the tips the
 checkout's runtime would (tool_jobs.wrap_tip after every step, add_code_tip
-once), so each pair shows what the tip changes. The wrap pair runs three steps
-and counts a sample by its last one: is the model out of the habit by then?
+once, ack_tip after every seeded step), so each pair shows what the tip
+changes. The wrap pair runs three steps and counts a sample by its last one: is
+the model out of the habit by then? `sh(` in a snippet is a run_terminal_command.
+
+Run-ahead cases (calls on a host run in order and stop at the first failure):
+chain asks for an edit, the tests, and a commit if they pass, and counts the
+step that edits: good is all three in it (direct calls or one snippet), not
+one call per step. chain-failed seeds that step with the tests exiting 1 and
+the commit "Not run": good is a next step that works on the failure, not a
+reply that says it committed or a commit sent again alone. ack-streak seeds
+lone steps whose results the next call did not need (a todo_write, an edit):
+good is a next step that sends its calls together; ack-streak-tip adds the
+runtime's tip for them.
 
 Real model calls on the user's GPU server, like the harness evals: one agent
 at a time. Only the llama source is ever called (the pooled accounts in
@@ -62,7 +73,7 @@ HELPERS = WORK[:7]
 CATALOG = "- qa-box  connector qa@qa-box.invalid  agent  linux bash  roots: /tmp, /srv/app  projects: app (/srv/app)"
 CALL_TIMEOUT_S = 240
 
-SITE = re.compile(r"\b(" + "|".join(HELPERS) + r")\s*\(")
+SITE = re.compile(r"\b(" + "|".join(HELPERS) + r"|sh)\s*\(")
 LOOP = re.compile(r"\bfor\s*\(|\bwhile\s*\(|\.map\(|\.forEach\(|Promise\.all")
 NOT_WRAP = frozenset({"direct", "batch", "filter", "snippet"})
 TOGETHER = frozenset({"batch", "snippet"})
@@ -98,6 +109,22 @@ CALLER_FILES = {"targets": CALLERS, "files": CALLERS}
 # One shell call that reaches every target: a loop, xargs, a glob, find, rg or a recursive grep.
 FOLDER_WIDE = re.compile(r"\bfor\s|\bwhile\s|\bxargs\b|\*|\bfind\b|\brg\b|\bgrep\b[^|;&]*\s-[a-zA-Z]*[rR]")
 EDITS = re.compile(r"\bsed\s+-i|\bperl\s+-[a-z]*i")
+CHAIN_ASK = ("In src/retry.js, rename the constant RETRIES to MAX_RETRIES. Then run the tests with `npm test`, and if "
+             "they pass, commit the change with the message \"Rename RETRIES to MAX_RETRIES\".")
+CHAIN_FILE = ("1: export const RETRIES = 3;\n2: \n3: export async function withRetry(fn) {\n4:   for (let i = 0; i <= RETRIES; "
+              "i++) {\n5:     try { return await fn(); } catch (err) { if (i === RETRIES) throw err; }\n6:   }\n7: }")
+CHAIN_FAIL = ("FAIL src/client.test.js\n  ● client › gives up after the last retry\n    ReferenceError: RETRIES is not defined\n"
+              "      at src/client.js:14:9\nTests: 1 failed, 11 passed, 12 total")
+TESTS = re.compile(r"\bnpm\s+(?:run\s+)?test\b|\bnpm\s+t\b")
+COMMIT = re.compile(r"\bgit\b[^\n]*\bcommit\b")
+# A reply that says the change is committed, unless it also says it was not.
+CLAIMS_COMMIT = re.compile(r"\bcommitted\b|\bcommit (?:is|was) (?:done|made|created)", re.I)
+DENIES = re.compile(r"\bnot\b|n't\b|\bnever\b|\bskipped\b|\bheld back\b|\bwithout\b", re.I)
+ACK_ASK = ("Release 2.4.0: set the version to 2.4.0 in package.json and in the README's version line, add a `## 2.4.0` "
+           "section with the line `- Rename fetchUser to loadUser` at the top of CHANGELOG.md, then run `npm test`.")
+ACK_FILES = (("package.json", '1: {\n2:   "name": "app",\n3:   "version": "2.3.9",\n4:   "private": true\n5: }'),
+             ("README.md", "1: # app\n2: \n3: Version: 2.3.9\n4: \n5: A small client for the users API."),
+             ("CHANGELOG.md", "1: # Changelog\n2: \n3: ## 2.3.9\n4: \n5: - Retry failed fetches"))
 
 
 def _file_text(path: str) -> str:
@@ -106,6 +133,11 @@ def _file_text(path: str) -> str:
              "    const user = await fetchUser(id);", f"    return render_{name}(user);", "  } catch (err) {",
              f"    report('{name}', err);", "    return null;", "  }", "}"]
     return "\n".join(f"{i}: {line}" for i, line in enumerate(lines, 1))
+
+
+def _sites(code: str) -> list[str]:
+    """The tools a snippet calls; sh is a run_terminal_command."""
+    return ["run_terminal_command" if name == "sh" else name for name in SITE.findall(code)]
 
 
 def _result(name: str, body: str, helpers=()) -> str:
@@ -124,7 +156,44 @@ def _step(msgs: list[dict], name: str, args: dict, body: str) -> None:
     ident = f"seed_{len(msgs)}"
     msgs.append({"role": "assistant", "content": "", "tool_calls": [
         {"id": ident, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}]})
-    msgs.append({"role": "tool", "tool_call_id": ident, "content": _result(name, body, SITE.findall(args.get("code") or ""))})
+    msgs.append({"role": "tool", "tool_call_id": ident, "content": _result(name, body, _sites(args.get("code") or ""))})
+
+
+def _call(name: str, args: dict, n: int) -> dict:
+    return {"id": f"seed_{n}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+
+
+def _seed_chain_read(msgs: list[dict]) -> None:
+    _step(msgs, "read_file", {"path": "src/retry.js"}, CHAIN_FILE)
+
+
+def _seed_chain_failed(msgs: list[dict]) -> None:
+    """The chain sent in one step: the edit worked, the tests exited 1, so the commit did not run."""
+    _seed_chain_read(msgs)
+    commit = 'git commit -am "Rename RETRIES to MAX_RETRIES"'
+    calls = [_call("search_replace", {"path": "src/retry.js", "old_string": "RETRIES", "new_string": "MAX_RETRIES",
+                                      "replace_all": True}, len(msgs)),
+             _call("run_terminal_command", {"command": "npm test", "description": "Run the tests"}, len(msgs) + 1),
+             _call("run_terminal_command", {"command": commit, "description": "Commit the rename"}, len(msgs) + 2)]
+    results = [_result("search_replace", "Edited src/retry.js (3 replacements)."),
+               f"From host qa-box:\nstatus: completed\nexit_code: 1\nduration_ms: 2140\n\n{CHAIN_FAIL}",
+               # The gate's own text (tool_runner.worker): the first failure names itself.
+               "[Fuse] Not run: run_terminal_command npm test exited 1 earlier in this step. Calls that change a host run "
+               "in order and stop at the first failure. Send this call again when it is still needed."]
+    msgs.append({"role": "assistant", "content": "", "tool_calls": calls})
+    msgs.extend({"role": "tool", "tool_call_id": call["id"], "content": text} for call, text in zip(calls, results))
+
+
+def _seed_acks(msgs: list[dict]) -> None:
+    """The three files read in one step, then a todo_write and one edit, each a step of its own."""
+    calls = [_call("read_file", {"path": path}, len(msgs) + n) for n, (path, _) in enumerate(ACK_FILES)]
+    msgs.append({"role": "assistant", "content": "", "tool_calls": calls})
+    msgs.extend({"role": "tool", "tool_call_id": call["id"], "content": _result("read_file", text)}
+                for call, (_, text) in zip(calls, ACK_FILES))
+    todos = [{"content": c, "status": "pending"} for c in ("package.json", "README.md", "CHANGELOG.md", "npm test")]
+    _step(msgs, "todo_write", {"todos": todos}, "ok")
+    _step(msgs, "search_replace", {"path": "package.json", "old_string": '"version": "2.3.9"',
+                                   "new_string": '"version": "2.4.0"'}, "Edited package.json.")
 
 
 def _wrapped(msgs: list[dict], call: str, body: str) -> None:
@@ -177,8 +246,21 @@ def _wrap_tip(tool_jobs, state: tuple, calls: list[dict]) -> tuple[tuple, str]:
             code = ""
         jobs.append(tool_jobs.ToolJob(i, call["id"], name, raw, f"ts_{i}", done=True, trace={"status": "done", "code": code}))
         jobs += [tool_jobs.ToolJob(i, call["id"], helper, "{}", f"ts_{i}_c{n}", parent=f"ts_{i}", done=True,
-                                   trace={"status": "done"}) for n, helper in enumerate(SITE.findall(code))]
+                                   trace={"status": "done"}) for n, helper in enumerate(_sites(code))]
     return tool_jobs.wrap_tip(jobs, state)
+
+
+def _ack_tip(tool_jobs, state: tuple, calls: list[dict], results: list[str]) -> tuple[tuple, str]:
+    """The checkout's acknowledgement tip for one step, from its calls and the results they got."""
+    jobs = []
+    for i, (call, text) in enumerate(zip(calls, results)):
+        code = re.search(r"\nexit_code: (-?\d+)\n", text)
+        output = text.partition("\n\n")[2] if code else text
+        trace = {"status": "error" if text.startswith("[Fuse] Not run") else "done", "output_chars": len(output),
+                 **({"exit_code": int(code.group(1))} if code else {})}
+        jobs.append(tool_jobs.ToolJob(i, call["id"], call["function"]["name"], call["function"].get("arguments") or "{}",
+                                      f"ts_{i}", text=text, done=True, trace=trace))
+    return tool_jobs.ack_tip(jobs, state)
 
 
 CASES = {
@@ -221,6 +303,17 @@ CASES = {
                      "ask": CALLERS_ASK, "seed": _seed_singles, "good": TOGETHER, **CALLER_FILES},
     "single-tip": {"about": "the same history, with the runtime's tip",
                    "ask": CALLERS_ASK, "seed": _seed_singles, "tip": "single", "good": TOGETHER, **CALLER_FILES},
+    "chain": {"about": "edit, test, commit if they pass: all three in the step that edits",
+              "ask": CHAIN_ASK, "seed": _seed_chain_read, "rounds": 3, "grade": "chain", "out": ("Tests: 12 passed, 12 total",),
+              "grep": "src/retry.js:1:export const RETRIES = 3;", "good": frozenset({"chain"})},
+    "chain-failed": {"about": "that step sent, tests exited 1, commit not run: the next step works on the failure",
+                     "ask": CHAIN_ASK, "seed": _seed_chain_failed, "grade": "after-fail",
+                     "good": frozenset({"works on it", "reports"})},
+    "ack-streak": {"about": "after a lone todo_write and a lone edit, without the tip: the rest in one step",
+                   "ask": ACK_ASK, "seed": _seed_acks, "out": ("Tests: 12 passed, 12 total",), "good": TOGETHER},
+    "ack-streak-tip": {"about": "the same history, with the runtime's tip",
+                       "ask": ACK_ASK, "seed": _seed_acks, "tip": "ack", "out": ("Tests: 12 passed, 12 total",),
+                       "good": TOGETHER},
 }
 
 
@@ -233,7 +326,7 @@ def classify_code(code: str) -> tuple[str, list[str]]:
         kind = "snippet"
     else:
         kind = "wrap" if len([line for line in code.splitlines() if line.strip()]) <= 3 else "filter"
-    return kind, [site.group(1) for site in sites]
+    return kind, ["run_terminal_command" if site.group(1) == "sh" else site.group(1) for site in sites]
 
 
 def _covers(name: str, args: dict, targets) -> bool:
@@ -281,8 +374,27 @@ def _edits(calls: list[dict], helpers: list[list[str]]) -> bool:
     return False
 
 
+def _chain(calls: list[dict]) -> str:
+    """How much of edit, test, commit a step that edits sends."""
+    raw = "\n".join(call["function"].get("arguments") or "" for call in calls)
+    return "chain" if TESTS.search(raw) and COMMIT.search(raw) else "edit+test" if TESTS.search(raw) else "edit alone"
+
+
+def _after_fail(message: dict, calls: list[dict], helpers: list[list[str]]) -> str:
+    """The step after tests failed and the commit was held back."""
+    if not calls:
+        text = str(message.get("content") or "")
+        return "claims commit" if CLAIMS_COMMIT.search(text) and not DENIES.search(text) else "reports"
+    raw = "\n".join(call["function"].get("arguments") or "" for call in calls)
+    if COMMIT.search(raw) and not TESTS.search(raw) and not _edits(calls, helpers):
+        return "resends commit"
+    return "works on it"
+
+
 def _canned(name: str, args: dict, case: dict, i: int) -> str:
     out = case.get("out") or ()
+    if name == "grep" and case.get("grep"):
+        return case["grep"]
     if name == "list_dir":
         return "libclient.so\nnotes.md\nsrc/"
     if name == "glob":
@@ -305,7 +417,17 @@ async def run_case(app, case: dict, repeat: int, send, show: bool = False) -> di
     if case.get("seed"):
         case["seed"](base)
     tool_jobs, wrap_tips, seeded = app["tool_jobs"], case.get("tip") == "wrap", (0, 0)
-    if wrap_tips:
+    if case.get("tip") == "ack":
+        if not hasattr(tool_jobs, "ack_tip"):
+            return None
+        state = None
+        for at, message in enumerate(base):
+            if message.get("tool_calls"):
+                n = len(message["tool_calls"])
+                state, tip = _ack_tip(tool_jobs, state, message["tool_calls"], [m["content"] for m in base[at + 1:at + 1 + n]])
+                if tip:
+                    base[at + n]["content"] += f"\n\n{tip}"
+    elif wrap_tips:
         if not hasattr(tool_jobs, "wrap_tip"):
             return None
         for at, message in enumerate(base):
@@ -330,6 +452,13 @@ async def run_case(app, case: dict, repeat: int, send, show: bool = False) -> di
                 break
             calls = message.get("tool_calls") or []
             kind, helpers = classify(calls, case.get("targets") or ())
+            if case.get("grade") == "after-fail" and (kind != "other" or not calls):
+                edit = _after_fail(message, calls, helpers)
+                kinds.append(kind)
+                if show:
+                    first = calls[0]["function"] if calls else {"name": "(reply)", "arguments": message.get("content")}
+                    print(f"  {edit}: {first['name']} {first.get('arguments') or ''}"[:400], flush=True)
+                break
             if kind == "none":
                 break
             if kind != "other":
@@ -353,10 +482,10 @@ async def run_case(app, case: dict, repeat: int, send, show: bool = False) -> di
                 state, tip = _wrap_tip(tool_jobs, state, calls)
                 if tip:
                     msgs[-1]["content"] += f"\n\n{tip}"
-            if case.get("grade") == "edit" and kind != "other" and _edits(calls, helpers):
-                edit = kind
+            if case.get("grade") in ("edit", "chain") and kind != "other" and _edits(calls, helpers):
+                edit = kind if case["grade"] == "edit" else _chain(calls)
                 break
-        if case.get("grade") == "edit":
+        if case.get("grade") in ("edit", "chain", "after-fail"):
             if kinds:
                 counts[edit or "no edit"] += 1
         elif kinds:
