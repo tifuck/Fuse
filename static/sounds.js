@@ -193,8 +193,10 @@
     return true;
   }
 
+  // Building the context takes a long frame, so it waits out the input
+  // handler; the page's activation still lets it start.
   function unlock() {
-    if (prefs().mode !== "off") audio();
+    if (prefs().mode !== "off") setTimeout(audio, 0);
   }
   for (const type of ["pointerdown", "keydown", "touchend"]) {
     window.addEventListener(type, unlock, { capture: true, passive: true });

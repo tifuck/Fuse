@@ -64,4 +64,11 @@
    var(--dock-h, x) still falls back to x until it is written. */
 @property --dock-h { syntax: "*"; inherits: false; }
 @property --chat-scroll-gutter { syntax: "*"; inherits: false; }
+/* The sidebar's and the artifact pane's widths, written on the chat root (the
+   settings shell for the first) on each frame of a resize drag. Not
+   inherited, for the same reason: the root's own columns read them, and the
+   sidebar, its child, asks for its width with "inherit". */
+@property --chat-history { syntax: "*"; inherits: false; }
+@property --chat-artifact { syntax: "*"; inherits: false; }
+.chat > .chat-history { --chat-history: inherit; }
 
