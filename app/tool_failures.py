@@ -51,6 +51,11 @@ KINDS = (
     # run_code: kept as set, since the error text quotes the code's failed call or a command's output.
     "code_error",  # the code threw (a bug in it, or a failed call it did not catch)
     "command_failed",  # an sh command in the code exited non-zero: the command failed, not the code
+    "timeout",  # the code ran past its deadline
+    "memory",  # the code used its heap
+    "cpu",  # the code used its CPU limit (most often an endless loop)
+    "worker",  # the code runner stopped unexpectedly: Fuse or the server, not the model
+    "busy",  # every code runner slot was taken: server load, not the model
     "tool_error",  # anything else
 )
 
@@ -332,7 +337,10 @@ GUIDE = (
     "interrupted = client cancelled; vault_locked / unavailable = context problems "
     "(agent is offline is unavailable). run_code rows: code_error = the snippet threw (its own bug or a failed "
     "call it did not catch); command_failed = a command it ran through sh exited non-zero, which is the command's "
-    "outcome, not a fault in the code. Workspace grep/list errors should include the "
+    "outcome, not a fault in the code; timeout / memory / cpu = the snippet ran past its deadline, heap or CPU limit "
+    "(the model's code did too much or looped); worker / busy = the code runner stopped or had no free slot (Fuse "
+    "or server load, not the model). A row with phase 'code' is a call a run_code snippet made (call_id is the "
+    "run_code call's); the snippet's own failure is a run_code row. Workspace grep/list errors should include the "
     "connector stderr and exit code, not a bare 'exit'. reasoning holds the model's reasoning right before "
     "the failed call; user_text is the user request that started the turn; model and "
     "upstream_model identify the route. For unknown_tool rows, trace.suggestion (when present) "

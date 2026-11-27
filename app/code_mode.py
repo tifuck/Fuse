@@ -29,8 +29,8 @@ from .workspace_ops.instructions import unlabel_host
 
 logger = logging.getLogger(__name__)
 
-# What the code can call, as hints name it: the tools plus sh (code_worker PRELUDE).
-PROVIDED = (*HELPERS, "sh")
+# What the code can call, as hints name it: the tools plus sh and read_result (code_worker PRELUDE).
+PROVIDED = (*HELPERS, "sh", "read_result")
 
 WORKER = Path(__file__).with_name("code_worker.py")
 HEAP_MB = 64
@@ -103,8 +103,13 @@ def _read_kept(owner: tuple, raw: str) -> dict:
     return {"ok": True, "value": units.decode("utf-16-le", "surrogatepass")}
 
 
+# Set once a worker could not set up its sandbox (code_worker SANDBOX_FAILED):
+# no worker on this server can, so run_code stays off until a restart.
+_no_sandbox = False
+
+
 def available() -> bool:
-    return _INSTALLED and bool(settings.code_mode)
+    return _INSTALLED and bool(settings.code_mode) and not _no_sandbox
 
 
 SCHEMA = {
@@ -143,10 +148,10 @@ SCHEMA = {
             "declare function sh(command: string, a?: {cwd?: string, timeout?: number, description?: string, "
             "host?: string, env?: string[]}): Promise<string>; // the output text; throws (exit code, output) unless "
             "the command exits 0, and the code stops there: for steps that must succeed before the next (edit, "
-            "test, commit)\n"
+            "test, commit); a command whose non-zero exit is no failure (grep, diff) needs `|| true`\n"
             "declare function read_result(id: string, a?: {offset?: number, limit?: number}): Promise<string>; "
-            "// the rest of an earlier result that was cut (the cut note names its id; kept 30 minutes): the text "
-            "that run returned, not its variables, so take only the part you need\n"
+            f"// the rest of an earlier result that was cut (the cut note names its id; kept {KEEP_S // 60} minutes): "
+            "the text that run returned, not its variables, so take only the part you need\n"
             "A line in (parentheses) in grep, glob or list_dir text is a note, not a result. A failed call throws "
             "an Error with the tool's message; catch it where a miss is expected. In Promise.all one failure "
             "rejects the whole batch and ends the code, stopping calls still running: add .catch(...) to calls "
@@ -204,9 +209,34 @@ def _timeout_ms(raw) -> int:
 
 
 def subject(args: dict) -> str:
-    """A call's path, pattern or command, short, for summaries of what ran."""
-    text = " ".join(str(args.get("path") or args.get("pattern") or args.get("command") or "").split())
+    """A call's path, pattern, command or description, short, for summaries of what ran."""
+    text = " ".join(str(args.get("path") or args.get("pattern") or args.get("command") or args.get("description")
+                        or "").split())
     return text[:80] + ("…" if len(text) > 80 else "")
+
+
+def _failure(name: str, trace: dict) -> str:
+    """How a call from code failed, as the step gate words it
+    (tool_runner._gate_failure); "" when a later change on its host may run."""
+    status, code = trace.get("status"), trace.get("exit_code")
+    if status == "error":
+        return "failed"
+    if status == "interrupted":
+        return "was interrupted"
+    if name != "run_terminal_command":
+        return ""
+    if type(code) is int and code != 0:
+        return f"exited {code}"
+    # Code starts no background command: a running one moved there and has not finished.
+    return "moved to the background and has not finished" if status == "running" else ""
+
+
+def _masked(user_id, body: dict) -> dict:
+    """body with the user's secrets swapped for stand-ins. Blocking: the map
+    may come from the database and a result may be 2 MB."""
+    from . import secret_guard
+
+    return secret_guard.mask_value(secret_guard.map_for(user_id), body)
 
 
 def _unlabel(text: str, trace: dict) -> str:
@@ -262,7 +292,9 @@ def _bad_args(name: str, args: dict) -> str:
     if not unknown and not missing:
         return ""
     what = f"has no argument {', '.join(unknown)}" if unknown else f"needs {', '.join(missing)}"
-    return f"{name} {what}; it takes {', '.join(known)}, e.g. {name}({_EXAMPLE_ARGS[name]})."
+    # Code refuses background commands (_execute), so they are not offered here.
+    takes = [key for key in known if (name, key) != ("run_terminal_command", "background")]
+    return f"{name} {what}; it takes {', '.join(takes)}, e.g. {name}({_EXAMPLE_ARGS[name]})."
 
 
 def _call_error(name: str, args: dict, message: str) -> str:
@@ -273,6 +305,10 @@ def _call_error(name: str, args: dict, message: str) -> str:
         message += " (path is one file or directory: make one call per path, or use include with braces)"
     if name == "search_replace" and "not found" in message:
         message = _edit_miss(args, message)
+    if name == "grep" and re.search(r"missing closing (parenthesis|\))|error parsing regexp", message, re.I):
+        first, _, rest = message.partition("\n")
+        message = (f"{first} (in a JavaScript string \\( is just (: write \\\\( or String.raw`...` for a literal "
+                   "parenthesis)" + (f"\n{rest}" if rest else ""))
     return " ".join(f"{name} {subject(args)}".split()) + f": {message}"
 
 
@@ -295,26 +331,40 @@ def _edit_miss(args: dict, message: str) -> str:
     return f"{first} ({'; '.join(hints)})" + (f"\n{rest}" if rest else "")
 
 
-def _positions(stack: str) -> str:
-    """V8 positions as the model's own line numbers; frames in the prelude
-    (a helper throwing) are dropped."""
+def _positions(stack: str, last: int) -> str:
+    """V8 positions as the model's own line numbers (the code has `last`
+    lines); frames in the prelude (a helper throwing) or past the code's last
+    line (the wrapper) are dropped, and so is a function name V8 made up from
+    the wrapper's text."""
     out = []
     for line in str(stack).splitlines():
         m = re.search(r"<anonymous>:(\d+)", line)
-        if m and int(m.group(1)) <= OFFSET:
+        if m and not OFFSET < int(m.group(1)) <= OFFSET + last:
             continue
+        line = re.sub(r"\bat (async )?\S*__fuse\S* \((<anonymous>:\d+:\d+)\)", r"at \1\2", line)
         out.append(re.sub(r"<anonymous>:(\d+)", lambda m: f"line {int(m.group(1)) - OFFSET}", line))
     return "\n".join(out)
 
 
-def _user_lines(stack: str) -> str:
+def _user_lines(stack: str, last: int) -> str:
     """The stack in the model's own line numbers, and a Node habit gets its fix."""
-    text = _positions(stack)
+    text = _positions(stack, last)
     fix = " Fix the code and call run_code again."
     # A helper the code shadowed (`const { grep } = globalThis`) is undefined, not un-awaited.
     shadowed = re.search(r"\b(\w+) is not a function", text)
     undefined = re.search(r"\b(\w+) is not defined", text)
-    if undefined and undefined.group(1) not in _NOT_HERE:
+    if "SyntaxError: Cannot use import statement outside a module" in text:
+        text += ("\n(import is not available: run_code is not Node.js, and its helpers are already defined: call them "
+                 f"as `await read_file(\"a.py\")` without importing anything.{fix})")
+    elif "await is only valid in async functions" in text:
+        text += ("\n(await works at the code's top level, not in a plain callback such as forEach's: use "
+                 f"`for (const x of list) {{ ... }}` or `await Promise.all(list.map(async (x) => ...))`.{fix})")
+    elif "Missing } in template expression" in text:
+        text += ("\n(In a backtick string `${` starts JavaScript: for the shell or for file text, use a '…' or \"…\" "
+                 f"string there, or write \\${{.{fix})")
+    elif re.search(r"\b(setTimeout|setInterval) is not a function", text):
+        text += f"\n(Timers are not available in run_code: to wait, run a command such as `await sh(\"sleep 5\")`.{fix})"
+    elif undefined and undefined.group(1) not in _NOT_HERE:
         name = undefined.group(1)
         text += (f"\n(If `${{{name}}}` sits in a backtick string meant for the shell or for file text, JavaScript "
                  f"filled it in: use a '…' or \"…\" string there, or write \\${{{name}}}.{fix})")
@@ -376,10 +426,14 @@ async def run(arguments: str, *, call, paused=None, owner: tuple = ()) -> tuple[
 
 
 async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
+    global _no_sandbox
     done: list[dict] = []
     tasks: set[asyncio.Task] = set()
     children = asyncio.Semaphore(CHILD_CONCURRENCY)
-    mutated: list[tuple[asyncio.Task, str]] = []
+    mutated: list[tuple[asyncio.Task, str, int]] = []
+    # Calls that failed, by number: how, as the refusal of a later change names it.
+    failed: dict[int, str] = {}
+    killed = False
     crashed: list[BaseException] = []
     abort = asyncio.Event()
     started = messages = received = 0
@@ -399,11 +453,19 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             stderr_tail.extend(chunk)
             del stderr_tail[:-2000]
 
-    async def answer(n: int, name: str, call_args: dict, after: list[asyncio.Task]) -> None:
+    async def answer(n: int, name: str, call_args: dict, after: list[asyncio.Task], gate: list[int]) -> None:
         nonlocal received
+        if after:
+            await asyncio.gather(*after, return_exceptions=True)
+        # Changes the code sent on a host before it saw the earlier ones'
+        # results stop at the first failure, like direct calls in one step.
+        cause = next((failed[k] for k in gate if k in failed), "")
+        if cause:
+            failed[n] = cause
+            refuse(n, f"Not run: {cause} earlier in this run. Calls sent together on a host stop at the first "
+                      "failure; send it again if it is still needed.")
+            return
         try:
-            if after:
-                await asyncio.gather(*after, return_exceptions=True)
             async with children:
                 text, trace = await call(name, call_args)
         except Exception as exc:
@@ -412,6 +474,8 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             crashed.append(exc)
             abort.set()
             text, trace = "Tool failed.", {"status": "error"}
+        if what := _failure(name, trace):
+            failed[n] = " ".join(f"{name} {subject(call_args)} {what}".split())
         entry = {"name": name, "subject": subject(call_args), "status": str(trace.get("status") or "")}
         if name == "run_terminal_command" and isinstance(trace.get("exit_code"), int):
             entry["exit_code"] = trace["exit_code"]
@@ -422,13 +486,10 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
         else:
             body = {"ok": True, "value": _value(name, text, trace)}
         if owner:
-            from . import secret_guard
-
             # The code only ever holds stand-ins, so it cannot encode or
             # split a real value on its way back to the model.
             try:
-                secrets = await asyncio.to_thread(secret_guard.map_for, owner[0])
-                body = secret_guard.mask_value(secrets, body)
+                body = await asyncio.to_thread(_masked, owner[0], body)
             except Exception as exc:
                 # Fail closed: an unmasked result never reaches the code, and
                 # the call still gets its reply instead of waiting out the run.
@@ -446,6 +507,8 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
     async def pump():
         # The worker runs model code: every line from it is checked like input.
         nonlocal started, messages
+        from .workspace_ops.common import _as_bool
+
         send({"code": code})
         while line := await proc.stdout.readline():
             msg = json.loads(line)
@@ -453,8 +516,8 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                 return None
             if "done" in msg:
                 return msg["done"] if isinstance(msg["done"], dict) else None
-            n, name, raw = msg.get("call"), msg.get("name"), msg.get("args")
-            if not isinstance(n, int) or not isinstance(name, str) or not isinstance(raw, str):
+            n, name, raw, pending = msg.get("call"), msg.get("name"), msg.get("args"), msg.get("pending", [])
+            if not (isinstance(n, int) and isinstance(name, str) and isinstance(raw, str) and isinstance(pending, list)):
                 return None
             messages += 1
             if messages > 2 * MAX_CALLS:
@@ -480,7 +543,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                 refuse(n, f"{name} takes one argument object, e.g. {name}({_EXAMPLE_ARGS[name]}).")
             elif bad := _bad_args(name, call_args):
                 refuse(n, bad)
-            elif name == "run_terminal_command" and call_args.get("background"):
+            elif name == "run_terminal_command" and _as_bool(call_args.get("background")):
                 refuse(n, "background commands are not available in run_code; call run_terminal_command directly.")
             elif started >= MAX_CALLS:
                 refuse(n, f"run_code allows at most {MAX_CALLS} tool calls per run.")
@@ -489,15 +552,17 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
                           "you have and continue in another run_code call.")
             else:
                 started += 1
-                after = []
+                after, gate = [], []
                 if name in MUTATING:
                     host = call_args.get("host")
                     host = host.strip().lower() if isinstance(host, str) else ""
                     # No host is the bound host, which a named host may also be.
-                    after = [t for t, h in mutated if not h or not host or h == host]
-                task = asyncio.ensure_future(answer(n, name, call_args, after))
+                    same = [(t, k) for t, h, k in mutated if not h or not host or h == host]
+                    after = [t for t, _ in same]
+                    gate = [k for _, k in same if k in pending]
+                task = asyncio.ensure_future(answer(n, name, call_args, after, gate))
                 if name in MUTATING:
-                    mutated.append((task, host))
+                    mutated.append((task, host, n))
                 task.set_name(" ".join(f"{name} {subject(call_args)}".split()))
                 tasks.add(task)
                 task.add_done_callback(tasks.discard)
@@ -524,12 +589,18 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
             except (ValueError, RecursionError, KeyError):
                 outcome = None
             if outcome is not None and not outcome.get("ok"):
-                # An sh failure is a command that failed, not a fault in the code.
-                kind = ("command_failed" if "frames" in outcome
-                        else "memory" if "memory limit" in str(outcome.get("error") or "").lower() else "code_error")
+                # The worker's own kind, else an sh failure is a command that
+                # failed, not a fault in the code.
+                kind = (outcome["kind"] if outcome.get("kind") in ("memory", "unavailable")
+                        else "command_failed" if "frames" in outcome else "code_error")
                 if kind == "memory":
                     outcome["error"] = (f"the code used its {HEAP_MB} MB of memory. Keep only what you need from each "
                                         "file instead of holding them all, or split the work across runs.")
+                elif kind == "unavailable":
+                    _no_sandbox = True
+                    logger.warning("run_code is off until a restart: its worker could not set up its sandbox")
+                    outcome["error"] = ("run_code cannot run on this server (its sandbox could not be set up); use "
+                                        "the tools directly.")
         elif not finished:
             kind, outcome = "timeout", {"ok": False, "error": (
                 f"run_code timed out after {int(timeout_s * 1000)}ms. Pass a larger timeout (up to {MAX_TIMEOUT_MS}) or "
@@ -538,6 +609,7 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
         aborted.cancel()
         reader.cancel()
         if proc.returncode is None:
+            killed = True
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
         await proc.wait()
@@ -552,7 +624,8 @@ async def _execute(code: str, timeout_s: float, call, paused, owner: tuple):
     if crashed:
         raise crashed[0]
     if outcome is None and not kind:
-        if proc.returncode in (-signal.SIGXCPU, -signal.SIGKILL):
+        # A worker this run killed itself did not reach its CPU limit.
+        if proc.returncode == -signal.SIGXCPU or (proc.returncode == -signal.SIGKILL and not killed):
             kind, error = "cpu", f"the code used its {CPU_SECONDS} s CPU limit, most likely in an endless loop."
         else:
             kind, error = "worker", ("the code runner stopped unexpectedly. Call run_code again; if it stops again, "
@@ -590,10 +663,10 @@ def _result(code: str, rec: dict, outcome: dict, kind: str, done: list[dict], st
         # line, "x is not defined"), so only the stack is rewritten, and it
         # goes under the first line, where the model looks for its line.
         head, sep, rest = error.partition("\n")
-        frames = _positions(str(outcome.get("frames") or "")).strip("\n")
+        frames = _positions(str(outcome.get("frames") or ""), code.count("\n") + 1).strip("\n")
         error = head + ("\n" + frames if frames else "") + sep + rest
     else:
-        error = _user_lines(error).removeprefix("Error: ")
+        error = _user_lines(error, code.count("\n") + 1).removeprefix("Error: ")
     # The calls come before the console output: a result over the limit is
     # cut from its end, and which calls ran must survive the cut.
     lines = [f"Error: {error}"]

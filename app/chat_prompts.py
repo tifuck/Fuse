@@ -278,7 +278,7 @@ _TASK_METHOD = (
     "state what you did not verify and why. If a check fails, say so and quote the relevant output."
 )
 _BATCH = (
-    "- Independent tool calls in one step run concurrently (up to 16 per step). Batch independent "
+    "- Independent tool calls in one step run concurrently. Batch independent "
     "reads, greps, globs, and directory listings into one step instead of one per round-trip; host "
     "writes, edits, and shell commands on the same host still run in the order you issue them, and the first "
     "that fails or exits non-zero stops the later ones on that host (end a command with `|| true` when a "
@@ -287,11 +287,12 @@ _BATCH = (
     "commit) goes in the same step.\n"
 )
 _BATCH_CODE = (
-    "- Independent direct calls in one step run concurrently (up to 16); host writes, edits and shell commands "
+    "- Independent direct calls in one step run concurrently; host writes, edits and shell commands "
     "on the same host run in the order you issue them, and the first that fails or exits non-zero stops the later "
     "ones on that host (end a command with `|| true` when a non-zero exit is no failure, as for grep finding "
     "nothing).\n"
 )
+_BATCH_READ = "- Independent direct calls in one step run concurrently.\n"
 _LOCATE = (
     "- Locate, then read, with the cheapest search that answers the question: `glob` when you know a "
     "file name or extension; `grep` with output_mode files_with_matches to learn which files mention "
@@ -348,7 +349,7 @@ def _code_mode(helpers: str, single: str, uses: str) -> str:
         "that contains `${` or backticks as '…' or \"…\" strings. Return findings with path:line (line numbers "
         "come from grep, or are the index + 1 after splitting a file's text), not whole files. Example (each read "
         "follows from the glob, and only the matching lines come back):\n"
-        "  const files = (await glob(\"src/**/*.js\")).split(\"\\n\").filter(Boolean);\n"
+        "  const files = (await glob(\"src/**/*.js\")).split(\"\\n\").filter((p) => p && !p.startsWith(\"(\"));\n"
         "  const found = [];\n"
         "  for (const f of files) {\n"
         "    const lines = (await read_file(f)).split(\"\\n\");\n"
@@ -931,7 +932,8 @@ def build_system_prompt(
             parts.append(_code_mode(helpers, "one read, one grep",
                                     "finding where something is defined or used (grep, read the matches, return the "
                                     "lines); comparing or counting across many files."))
-            parts.append("Tools:\n" + _BATCH_CODE + _LOCATE_CODE)
+            # A plan agent has no shell and no writes: only the concurrency part applies.
+            parts.append("Tools:\n" + (_BATCH_CODE if kind == "explore" else _BATCH_READ) + _LOCATE_CODE)
         else:
             parts.append("Tools:\n" + _PARALLEL)
         if kind == "explore":

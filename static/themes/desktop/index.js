@@ -411,6 +411,7 @@ export function createDesktopTheme(runtime) {
     get codeRunParts() { return theme.codeRunParts; },
     get consoleEditCounts() { return theme.consoleEditCounts; },
     get consoleFreezeThoughtTimes() { return theme.consoleFreezeThoughtTimes; },
+    get consoleTruncationNote() { return theme.consoleTruncationNote; },
     get displayCommand() { return theme.displayCommand; },
     get escapeHtml() { return runtime.escapeHtml; },
     get highlightCode() { return theme.highlightCode; },

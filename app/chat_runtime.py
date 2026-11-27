@@ -610,7 +610,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
             vault_ok = bool(agent.get("vault_unlocked"))
         else:
             vault_ok = vault_unlocked_for(user["id"])
+    from . import code_mode
     from .agent_catalog import CODE_MODE, sanitize_loaded
+
+    # Off for the rest of the process once its sandbox could not be set up.
+    CODE_MODE = CODE_MODE and code_mode.available()
 
     loaded_tools: list[str] = sanitize_loaded(agent.get("loaded_tools") if isinstance(agent.get("loaded_tools"), list) else [])
     from .agent_catalog import ARTIFACT_NAMES

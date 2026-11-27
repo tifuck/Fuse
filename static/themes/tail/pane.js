@@ -131,14 +131,18 @@ export function create(deps) {
   };
   try { const saved = localStorage.getItem(WIDE); setWide(saved === "wide" || saved === "full" ? saved : ""); } catch (_) {}
 
-  // Opens the call behind a changed file: its burst, then the call itself.
+  // Opens the call behind a changed file: its burst, then the call itself. A
+  // call run_code made is a row in that run's tree: the run opens first.
   function showStep(step) {
-    const li = log?.querySelector(`li.chat-step[data-step="${CSS.escape(step)}"]`);
+    const row = log?.querySelector(`[data-step="${CSS.escape(step)}"]`);
+    const li = row?.closest("li.chat-step");
     if (!li) return;
+    const toggle = (el) => el.querySelector(":scope > .chat-step-main > .chat-step-head [data-step-toggle]");
     const burst = li.closest("[data-activity]");
     if (burst && !burst.classList.contains("is-open")) burst.querySelector("button[data-activity-summary]")?.click();
-    if (!li.classList.contains("is-console-expanded")) li.querySelector(":scope > .chat-step-main > .chat-step-head [data-step-toggle]")?.click();
-    li.scrollIntoView({ block: "center" });
+    if (!li.classList.contains("is-console-expanded")) toggle(li)?.click();
+    if (row !== li && toggle(row)?.getAttribute("aria-expanded") === "false") toggle(row).click();
+    row.scrollIntoView({ block: "center" });
   }
 
   // A phone's top bar folds Appearance, Context, Skills and Alerts into one menu.

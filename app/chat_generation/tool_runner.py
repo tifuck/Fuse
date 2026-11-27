@@ -25,7 +25,8 @@ from ..chat_tools import ARTIFACT_TOOL_IDS
 
 from .parsing import _ARG_LIMIT_FILE, _ARG_OVERFLOW
 from .stream import _SENTINEL, HEARTBEAT_S
-from .tool_jobs import MAX_TOOL_CALLS, TOOL_RESULT_CHARS, ToolJob, _redact_tool_args, _running_event, jobs_from_calls
+from .tool_jobs import (MAX_TOOL_CALLS, TOOL_RESULT_CHARS, ToolJob, _keep_calls_tail, _redact_tool_args, _running_event,
+                        jobs_from_calls)
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +101,17 @@ def _bound_alias(user_id: int, host_id) -> str:
     return str(row["alias"] or "").strip().lower() if row else ""
 
 
-def _gate_failure(job: ToolJob) -> str:
+def _gate_failure(job: ToolJob, jobs: list[ToolJob] = ()) -> str:
     """How an earlier host-changing call of the step failed, as the skip text
     words it; "" when a later call on its host may still run. Asked only
-    while the user has not stopped the round, so an interrupt is a failure."""
+    while the user has not stopped the round, so an interrupt is a failure.
+    A run_code counts only once one of its own host-changing calls (in jobs,
+    the round's) started: a read-only snippet that threw, or a run that never
+    ran, changed nothing."""
     status, code = job.trace.get("status"), job.trace.get("exit_code")
+    if job.name == "run_code" and not any(
+            j.parent == job.event_id and j.name in _HOST_MUTATING_TOOLS and j.started for j in jobs):
+        return ""
     if status == "error":
         return "failed"
     if status == "interrupted":
@@ -312,8 +319,14 @@ async def run_tools(
             await persist_now()
             emit({"event": "tool", **job.trace})
             return
-        emit(_running_event(job))
-        if not job.parent:
+        running = _running_event(job)
+        emit(running)
+        if job.name == "run_code":
+            # Kept on the row whether the run finishes, stops or fails.
+            job.trace = {k: running[k] for k in ("description", "code") if k in running}
+        # A call run_code made that changes a host is checkpointed as it starts
+        # too: a resume names it as one whose outcome is unknown.
+        if not job.parent or job.name in _HOST_MUTATING_TOOLS:
             await persist_now()
         raw_args = (job.arguments or "").strip()
         if raw_args:
@@ -385,7 +398,7 @@ async def run_tools(
                 emit({"event": "tool", "id": job.event_id, "status": "progress", **fields})
 
             run_coding = bool(session.get("coding")) if session else coding
-            if job.name == "run_code" and not job.parent and run_coding and code_mode.available():
+            if job.name == "run_code" and not job.parent and run_coding:
                 text, trace = await code_mode.run(
                     arguments, call=lambda name, args: run_child(job, name, args), paused=lambda: bool(asking),
                     owner=(user_id, thread_id),
@@ -464,6 +477,9 @@ async def run_tools(
             output = trace.get("output") if isinstance(trace.get("output"), str) else (text or "")
             keep = _CHILD_READ_OUTPUT_MAX if job.parent and job.name in _HOST_READ_TOOLS else chats.TOOL_OUTPUT_MAX
             trace["output"] = output[-keep:] if trace.get("output_mode") == "tail" else output[:keep]
+            if job.name == "run_code" and not job.parent:
+                # The views count its calls from its closing lines.
+                trace["output"] = _keep_calls_tail(output, keep)
             trace["output_retained_chars"] = len(trace["output"])
             if trace.get("output_mode") == "tail" and trace.get("output_start") is not None:
                 trace["output_start"] += len(output) - len(trace["output"])
@@ -484,7 +500,13 @@ async def run_tools(
                 from .. import secret_guard
 
                 # The code held stand-ins (app/code_mode.py); the user and the stored chat get real values.
-                job.text = await asyncio.to_thread(lambda: secret_guard.restore_text(secret_guard.map_for(user_id), text or ""))
+                def restore():
+                    held = secret_guard.map_for(user_id)
+                    return secret_guard.restore_text(held, text or ""), {
+                        key: secret_guard.restore_text(held, job.trace[key]) for key in ("output", "error") if key in job.trace}
+
+                job.text, restored = await asyncio.to_thread(restore)
+                job.trace.update(restored)
             job.done = True
             if trace.get("status") in ("error", "interrupted"):
                 await _record_failure(
@@ -511,6 +533,10 @@ async def run_tools(
             )
             await persist_now()
             emit({"event": "tool", **job.trace})
+            raise
+        except CheckpointFailed:
+            # A call run_code made could not be saved: the turn ends as it does
+            # for a direct call, not as a failed tool.
             raise
         except Exception:
             logger.exception("Tool %s failed", job.name or "unknown")
@@ -571,7 +597,8 @@ async def run_tools(
             if child_reads[parent.event_id] > _CHILD_READ_ROWS:
                 unshown.add(child.event_id)
         jobs.append(child)
-        await run_job(child, _job_phase(name))
+        # Phase "code" marks it in the failure log as a call the code made.
+        await run_job(child, "code")
         # The code has the result now; the round keeps only what summaries
         # need (a 2 MB read or a 400 KB write must not stay for the round).
         text, child.text = child.text, ""
@@ -656,7 +683,7 @@ async def run_tools(
                     await asyncio.gather(*deps, return_exceptions=True)
                 if not cancel.is_set():
                     for e in earlier:
-                        what = _gate_failure(e) if e.done else ""
+                        what = _gate_failure(e, jobs) if e.done else ""
                         if what:
                             await skip(j, *causes.get(e.event_id, (e, what)))
                             return
@@ -673,7 +700,8 @@ async def run_tools(
                           "order and stop at the first failure. Send this call again when it is still needed.")
                 # Not logged as a tool failure: the gate worked, no tool failed.
                 # The row still names what was held back.
-                shown = {k: v for k, v in _running_event(j).items() if k in ("host", "path", "command", "cwd", "description")}
+                shown = {k: v for k, v in _running_event(j).items()
+                         if k in ("host", "path", "command", "cwd", "description", "code")}
                 j.trace = {"name": j.name, **shown, "status": "error", "kind": "not_run", "error": j.text, "id": j.event_id}
                 j.done = True
                 await persist_now()
@@ -705,7 +733,9 @@ async def run_tools(
                     earlier = ()
                     if j.name in _HOST_MUTATING_TOOLS:
                         gate_host = "" if j.name == "run_code" else host or bound
-                        earlier = [e for e, h in gate_seen if _same_host(h, gate_host)]
+                        # kill_command is cleanup: it keeps its order but is never held back.
+                        if j.name != "kill_command":
+                            earlier = [e for e, h in gate_seen if _same_host(h, gate_host)]
                         gate_seen.append((j, gate_host))
                     task = tg.create_task(run_after(deps, j, earlier))
                     if j.name == "web_search":

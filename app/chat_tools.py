@@ -462,10 +462,13 @@ def _openai_tools(names: list[str], *, coding: bool, extra: list[str] | None, al
         schemas.append(SCHEMAS["web_search"])
         schemas.append(SCHEMAS["read_url"])
     if coding:
-        from . import agent_catalog
+        from . import agent_catalog, code_mode
 
         seen: set[str] = set()
         for name in agent_catalog.ALWAYS_ON_CODING:
+            # Off for the rest of the process once its sandbox could not be set up.
+            if name == "run_code" and not code_mode.available():
+                continue
             item = agent_catalog.schema(name)
             if item:
                 schemas.append(item)
@@ -1363,8 +1366,9 @@ async def execute_tool(
     ):
         if not coding:
             return unknown_tool_reply(name, arguments, coding=False)
-        if loaded is not None and name not in loaded:
-            return not_loaded_reply(name)
+        # Before the loaded check: run_code reaches these unloaded, and these
+        # agents cannot load them (search_tools refuses), so "load it" would be
+        # wrong advice.
         kind = str((session or {}).get("subagent_type") or "")
         if kind == "explore" and name in ("write_file", "search_replace"):
             msg = "explore subagents cannot write files."
@@ -1372,6 +1376,8 @@ async def execute_tool(
         if kind == "plan" and name in ("write_file", "search_replace", "run_terminal_command", "monitor"):
             msg = "plan subagents cannot run shell or write files."
             return msg, {"name": name, "status": "error", "kind": "denied", "error": msg}
+        if loaded is not None and name not in loaded:
+            return not_loaded_reply(name)
         from . import chats, workspace
 
         text, rec = await workspace.execute(
