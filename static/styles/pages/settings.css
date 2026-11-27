@@ -267,8 +267,23 @@ html body.is-settings .settings-shell .set-secret-field input[type="text"]:disab
   .set-secrets-head { padding-left: 0.9rem; padding-right: 0.9rem; }
 }
 .set-mem { display: block; }
-.set-mem > summary { cursor: pointer; list-style: none; min-height: 44px; }
+.set-note[hidden] { display: none; }
+.set-mem > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 1rem; align-items: center; cursor: pointer; list-style: none; min-height: 44px; }
+.set-mem > summary > * { grid-column: 1; }
 .set-mem > summary::-webkit-details-marker { display: none; }
+/* The row reads as a list entry otherwise: say that it opens an editor. */
+.set-mem > summary::after {
+  content: "Edit";
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--mist);
+  font-size: 0.78rem;
+}
+.set-mem[open] > summary::after { content: "Close"; color: var(--mute); }
+.set-mem > summary:hover::after { border-color: var(--mute); }
 .set-mem > summary span { overflow-wrap: anywhere; }
 :where(html:not(.is-chat-root)) .set-mem[open] > summary strong { color: var(--brass); }
 .set-mem > .set-control { margin-top: 0.75rem; }

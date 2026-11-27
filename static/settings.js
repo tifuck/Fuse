@@ -95,7 +95,8 @@
   });
 
   root.querySelectorAll("[data-memory-form]").forEach((form) => {
-    const id = form.closest("[data-memory-id]").getAttribute("data-memory-id");
+    const row = form.closest("[data-memory-id]");
+    const id = row.getAttribute("data-memory-id");
     const out = form.querySelector(".set-status");
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -105,6 +106,8 @@
           description: form.elements.description.value,
           body: form.elements.body.value,
         });
+        const desc = form.elements.description.value.trim().replace(/\s+/g, " ");
+        row.querySelector("summary span").textContent = [form.elements.type.value, row.dataset.memoryScope, desc].join(" · ");
         return "Saved.";
       });
     });
@@ -112,7 +115,8 @@
       if (!window.confirm("Delete this memory? Chats will no longer see it.")) return;
       try {
         await api(`/settings/memories/${id}`, "DELETE");
-        form.closest("[data-memory-id]").remove();
+        row.remove();
+        if (!root.querySelector("[data-memory-id]")) root.querySelector("[data-memory-empty]").hidden = false;
       } catch (err) {
         status(out, err.message, "fault");
       }

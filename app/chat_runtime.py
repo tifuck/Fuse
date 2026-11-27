@@ -84,7 +84,6 @@ from .chat_generation.policy import (
 from .chat_generation import cache_watch
 from .chat_generation.consume import _add_usage, consume_round as _consume_round
 from .chat_generation.tool_jobs import (
-    CODE_TIP_AFTER,
     CODING_UNLIMITED,
     READ_RESULT_CHARS,
     SKILL_RESULT_CHARS,
@@ -100,13 +99,10 @@ from .chat_generation.tool_jobs import (
     _tool_messages,
     _tool_result_clip,
     _tool_rounds_done,
-    add_code_tip,
-    add_tip,
+    add_step_tip,
     apply_skill_preload,
-    code_tip_count,
     fold_preload_skill,
     jobs_from_calls,
-    wrap_tip,
 )
 from .chat_generation.tool_runner import (
     MAX_CALLS_PER_ROUND,
@@ -1184,6 +1180,8 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
         code_tip_seen = collections.Counter() if coding and CODE_MODE else None
         # run_code calls in a row that passed one call through, and the wrap tips given for them.
         wrap_state = (0, 0) if coding and CODE_MODE else None
+        # Steps that were one call whose result the next call did not need, and the tips given for them.
+        ack_state = (collections.Counter(), 0) if coding else None
         idle_stalls = 0
         length_salvages = 0
         empty_retries = 0
@@ -1954,15 +1952,7 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                     length_salvages = 0
                 tool_msgs = _tool_messages(jobs, content=str(summary.get("content") or ""))
                 tool_msgs[0].update(_native_reasoning(summary.get("reasoning"), model, summary.get("thinking"), source_type=src_type or src_type_guess))
-                if code_tip_seen is not None:
-                    code_tip_seen = code_tip_count(jobs, code_tip_seen)
-                    if code_tip_seen is not None and code_tip_seen.total() >= CODE_TIP_AFTER:
-                        add_code_tip(tool_msgs, code_tip_seen)
-                        code_tip_seen = None
-                if wrap_state is not None:
-                    wrap_state, tip = wrap_tip(jobs, wrap_state)
-                    if tip:
-                        add_tip(tool_msgs, tip)
+                wrap_state, ack_state, code_tip_seen = add_step_tip(tool_msgs, jobs, wrap_state, ack_state, code_tip_seen)
                 transcript = transcript + tool_msgs
                 current_messages = transcript
                 if truncated_calls and run_calls:
@@ -2092,10 +2082,11 @@ async def stream_dashboard_chat(request: Request, user, raw: dict, *, frozen_con
                         continue
                     trace = job.trace if isinstance(getattr(job, "trace", None), dict) else {}
                     st = trace.get("status") or ""
-                    # over_call_cap is a server-side refusal, not a model or
-                    # provider failure; it must not consume the stall budget.
+                    # over_call_cap is a server-side refusal and not_run a call
+                    # the step gate held back after an earlier failure, not a
+                    # model or provider failure; neither consumes the stall budget.
                     if st in ("error", "interrupted"):
-                        if trace.get("kind") != "over_call_cap":
+                        if trace.get("kind") not in ("over_call_cap", "not_run"):
                             stall_fails += 1
                     else:
                         stall_fails = 0

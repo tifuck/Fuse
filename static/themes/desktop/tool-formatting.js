@@ -314,7 +314,7 @@ function consoleCallHtml(trace, presentation, full = false) {
     if (described) {
       // The description is the row's sentence (rowSentence). A description
       // that does not start with a verb keeps "Ran" before it.
-      const sentence = rowSentence(described, presentation, shellExitError(trace, presentation));
+      const sentence = rowSentence(described, presentation, shellExitError(trace, presentation), trace.kind === "not_run");
       const lead = sentence ? sentence.lead : verb;
       const rest = sentence ? sentence.rest : described;
       return `<span class="chat-console-call is-described"><span class="chat-tool-action">${deps.escapeHtml(lead)}</span>` +
@@ -425,10 +425,12 @@ const VERB_FORMS = {
 const ARTIFACT_VERBS = { create_artifact: "Create", update_artifact: "Update", edit_artifact: "Edit", read_artifact: "Read" };
 const ARTIFACT_FORMS = { Create: ["Created", "Creating"], Update: ["Updated", "Updating"], Edit: ["Edited", "Editing"], Read: ["Read", "Reading"] };
 // A verb is only what happened: a stop that found nothing to stop tried to,
-// a wait that came back early checked on, a watch that was cut off stopped.
+// a wait that came back early checked on, a watch that was cut off stopped,
+// a call the step gate held back did not run at all.
 function sentenceVerb(verb, name, presentation, trace) {
     const running = Boolean(presentation?.running);
     const artifact = ARTIFACT_VERBS[name];
+    if (trace?.kind === "not_run") return `Did not ${artifact ? `${artifact.toLowerCase()} the artifact` : verb === "Monitor" ? "watch" : verb === "Code" ? "run" : verb.toLowerCase()}`;
     if (artifact && presentation?.failed) return `Could not ${artifact.toLowerCase()} the artifact`;
     if (!running && trace) {
       if (unknownTool(trace, presentation)) return "Tried a tool that doesn't exist";
@@ -449,13 +451,17 @@ const unknownTool = (trace, presentation) => Boolean(presentation?.failed && /^u
 
 // A described call's sentence, split into its verb and the rest: past tense
 // once it finished ("Listed the test areas"), as it happens while it runs,
-// and "Failed to …" or "Stopped …ing" when it did not finish, so a row never
-// claims what did not happen. Null when the description does not start with
-// a verb.
-function rowSentence(described, presentation, exitError = false) {
+// and "Failed to …" or "Stopped …ing" when it did not finish, or "Did not …"
+// when it never ran, so a row never claims what did not happen. Null when the
+// description does not start with a verb.
+function rowSentence(described, presentation, exitError = false, notRun = false) {
     const forms = deps.ccRunningForm(described) ? deps.ccInflect(described) : null;
     if (!forms) return null;
     const lower = (text) => text.charAt(0).toLowerCase() + text.slice(1);
+    if (notRun) {
+      const words = `Did not ${lower(described)}`.split(" ");
+      return { lead: words.slice(0, 3).join(" "), rest: words.slice(3).join(" ") };
+    }
     const failed = presentation?.failed || exitError;
     const [sentence, lead] = presentation?.running ? [forms.running, 1]
       : failed ? [`Failed to ${lower(described)}`, 3]

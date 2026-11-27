@@ -79,6 +79,8 @@ class ToolJob:
     parent: str = ""
     # A run_code result too long for the model: its kept whole text (code_mode.keep).
     result_id: str = ""
+    # run_job began it. An interrupted call that never started did not run.
+    started: bool = False
 
 
 def jobs_from_calls(calls: list[dict], completion_i: int) -> list[ToolJob]:
@@ -333,7 +335,8 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
 
 # The other way round. A run_code call that only passes one call's result
 # through (one call, WRAP_LINES lines of code or fewer) is a slower direct
-# call that hides a command's exit code, and a model copies its own history:
+# call (one that does not use sh also hides a command's exit code), and a
+# model copies its own history:
 # in the tool-choice eval (scripts/qa/tool_choice.py) one such call was enough
 # for most later steps to be another. So the first one gets a tip, and so does
 # each one after it, WRAP_TIPS times a turn at most; that cost no batching in
@@ -344,33 +347,105 @@ def add_code_tip(tool_msgs: list[dict], seen: collections.Counter) -> None:
 WRAP_TIP_AFTER = 1
 WRAP_TIPS = 10
 WRAP_LINES = 3
+_SH = re.compile(r"\bsh\s*\(")
 
 
 def wrap_tip(jobs: list[ToolJob], state: tuple[int, int] = (0, 0)) -> tuple[tuple[int, int], str]:
     """One step's jobs and the turn's (pass-through run_code calls in a row, tips given) so far: that pair
     after this step, and the tip the step earns or "". A run that made several calls, or worked on its one
-    result, ends the row; a run that failed or made no call leaves it."""
+    result, ends the row; a run that failed (an sh command that failed included: its result is the failure,
+    not a pass-through), was not run or made no call leaves it."""
     streak, given = state
     made: dict[str, list[str]] = {}
     for j in jobs:
-        if j.parent:
+        # A call the step gate held back never ran.
+        if j.parent and j.trace.get("kind") != "not_run":
             made.setdefault(j.parent, []).append(j.name)
-    tool = ""
+    tool, sh = "", False
     for j in jobs:
         calls = made.get(j.event_id)
         if j.name != "run_code" or j.parent or j.trace.get("status") != "done" or not calls:
             continue
         code = [line for line in str(j.trace.get("code") or "").splitlines() if line.strip()]
         tool = calls[0] if len(calls) == 1 and len(code) <= WRAP_LINES else ""
+        sh = any(_SH.search(line) for line in code)
         streak = streak + 1 if tool else 0
     if not tool or streak < WRAP_TIP_AFTER or given >= WRAP_TIPS:
         return (streak, given), ""
-    hides = " and hides the command's exit code" if tool == "run_terminal_command" else ""
+    # A failed sh shows the exit code; one that worked had exit 0.
+    hides = " and hides the command's exit code" if tool == "run_terminal_command" and not sh else ""
     which = "Your last run_code call" if streak == 1 else f"Your last {streak} run_code calls each"
     return (streak, given + 1), (
         f"[Fuse] {which} wrapped one {tool} call and returned its result unchanged. "
         f"That costs more than the call itself{hides}. Make your next call directly: {tool}({{...}}), not run_code. "
         "Use run_code only when the code makes several calls or works on a result before returning it.")
+
+
+# A step that is one call whose result the next call did not need (a
+# todo_write or scratch, an edit or write that worked, a command that exited 0
+# and printed next to nothing) costs a round trip for nothing: in production
+# (2026-11-17..27) over 1,700 of 20,000 steps were one, followed by more work.
+# Calls on a host run in order and stop at the first failure
+# (tool_runner.worker), so such a call can go with the next one. The
+# ACK_TIP_AFTER-th such step of a turn gets a tip naming them, and so does each
+# one after it, ACK_TIPS times a turn at most. A run_code step never counts:
+# the wrap tip covers it. One tip per step: chat_runtime gives the wrap tip
+# first, then this one, then add_code_tip.
+ACK_TIP_AFTER = 2
+ACK_TIPS = 10
+ACK_OUTPUT_CHARS = 120
+
+
+def _ack_call(jobs: list[ToolJob]) -> str:
+    """The step's one call when its result held nothing the next call needed, else ""."""
+    top = [j for j in jobs if not j.parent]
+    if len(top) != 1 or top[0].trace.get("status") != "done":
+        return ""
+    j = top[0]
+    if j.name in ("todo_write", "scratch", "search_replace", "write_file"):
+        return j.name
+    if j.name != "run_terminal_command" or type(j.trace.get("exit_code")) is not int or j.trace["exit_code"] != 0:
+        return ""
+    chars = j.trace.get("output_chars")
+    chars = chars if type(chars) is int else len(str(j.trace.get("output") or ""))
+    return j.name if chars < ACK_OUTPUT_CHARS else ""
+
+
+def ack_tip(jobs: list[ToolJob], state: tuple | None = None, room: bool = True) -> tuple[tuple, str]:
+    """One step's jobs and the turn's (such steps per tool, tips given) so far: that pair after this step, and
+    the tip the step earns or "". room=False: another tip has this step, so this one is not given."""
+    seen, given = state or (collections.Counter(), 0)
+    name = _ack_call(jobs)
+    if not name:
+        return (seen, given), ""
+    seen = seen + collections.Counter([name])
+    if not room or seen.total() < ACK_TIP_AFTER or given >= ACK_TIPS:
+        return (seen, given), ""
+    calls = ", ".join(f"{n} {tool}" for tool, n in seen.most_common())
+    return (seen, given + 1), (
+        f"[Fuse] {seen.total()} of your steps this turn were one call whose result you did not need for your next "
+        f"call ({calls}). Send such a call in the same step as the call that follows it: calls on a host run in "
+        "order and stop at the first failure.")
+
+
+def add_step_tip(tool_msgs: list[dict], jobs: list[ToolJob], wrap_state: tuple | None, ack_state: tuple | None,
+                 code_seen: collections.Counter | None) -> tuple:
+    """At most one tip on a step's results: the wrap tip, then the acknowledgement tip, then the run_code tip,
+    which waits for a step with no other tip. A state is None while its tip is off; returns the three updated."""
+    tip = ""
+    if wrap_state is not None:
+        wrap_state, tip = wrap_tip(jobs, wrap_state)
+    if ack_state is not None:
+        ack_state, ack = ack_tip(jobs, ack_state, room=not tip)
+        tip = tip or ack
+    if code_seen is not None:
+        code_seen = code_tip_count(jobs, code_seen)
+        if not tip and code_seen is not None and code_seen.total() >= CODE_TIP_AFTER:
+            add_code_tip(tool_msgs, code_seen)
+            code_seen = None
+    if tip:
+        add_tip(tool_msgs, tip)
+    return wrap_state, ack_state, code_seen
 
 
 def add_tip(tool_msgs: list[dict], tip: str) -> None:
@@ -400,11 +475,20 @@ def _code_clip(text: str, result_id: str = "") -> str:
                          f"not run its edits or commands again.{rest}]") + calls
 
 
+def _interrupted(job: ToolJob) -> str:
+    if not job.started:
+        # Not "Tool interrupted …": the resume notes read that opening as an unknown outcome.
+        return "Not run: the turn was interrupted before this call started. Send it again if it is still needed."
+    return "Tool interrupted mid-run: its outcome is unknown. Check its state before sending it again."
+
+
 def _code_result(group: list[ToolJob]) -> str:
     head = group[0]
     failed = head.trace.get("kind") == "internal_exception"
     if head.done and head.text and head.text != "Tool interrupted." and not failed:
         return _code_clip(head.text, head.result_id)
+    if not head.started and len(group) == 1:
+        return _interrupted(head)
     # Cut off mid-run (a stop, a restart or a failure inside Fuse): what
     # changed, and what may have.
     lines = []
@@ -416,9 +500,12 @@ def _code_result(group: list[ToolJob]) -> str:
         except (ValueError, RecursionError):
             args = {}
         unknown = not j.done or j.trace.get("status") == "interrupted"
-        lines.append(" ".join(f"- {j.name} {subject(args)}".split()) + (": outcome unknown" if unknown else ": done"))
+        code = j.trace.get("exit_code")
+        outcome = (": not run" if j.done and unknown and not j.started else ": outcome unknown" if unknown
+                   else f": done, exit {code}" if type(code) is int else ": done")
+        lines.append(" ".join(f"- {j.name} {subject(args)}".split()) + outcome)
     # Unknown outcomes first, so the clip drops finished edits before them.
-    lines.sort(key=lambda line: line.endswith(": done"))
+    lines.sort(key=lambda line: not line.endswith(": outcome unknown"))
     text = ("Tool failed inside Fuse" if failed else "Tool interrupted") + ": the code stopped before it finished."
     return _tool_result_clip(head.name, text + (" Its edits and commands:\n" + "\n".join(lines) if lines
                                                else " It had started no file edit or command."))
@@ -428,12 +515,13 @@ def _call_result(group: list[ToolJob]) -> str:
     if group[0].name == "run_code" and not group[0].parent:
         return _code_result(group)
     if len(group) == 1:
+        if group[0].text == "Tool interrupted.":
+            return _interrupted(group[0])
         return _tool_result_clip(group[0].name, group[0].text or "")
     parts = []
     for j in group:
         # Only a mid-round checkpoint has unfinished hosts; a resume reads it.
-        text = _tool_result_clip(j.name, j.text or "") if j.done else (
-            "Interrupted before this host finished; check its state before re-running.")
+        text = _tool_result_clip(j.name, j.text or "") if j.done and j.text != "Tool interrupted." else _interrupted(j)
         if not text.startswith("From host "):
             text = f"From host {json.loads(j.arguments).get('host')}:\n{text}"
         parts.append(text)
