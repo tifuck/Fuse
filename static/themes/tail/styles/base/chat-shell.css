@@ -14,6 +14,7 @@ html:where(.is-chat-root[data-chat-view="tail"]).is-chat-root,
   height: var(--vv-height, calc(100dvh - var(--vv-offset, 0px)));
   max-height: var(--vv-height, calc(100dvh - var(--vv-offset, 0px)));
   overflow: hidden;
+  overflow: clip;
   scrollbar-gutter: auto;
 }
 :where(html.is-chat-root[data-chat-view="tail"]) body.is-chat.is-keyboard {
@@ -35,6 +36,7 @@ html:where(.is-chat-root[data-chat-view="tail"]).is-chat-root,
   min-height: 0;
   height: auto;
   overflow: hidden;
+  overflow: clip;
 }
 :where(html.is-chat-root[data-chat-view="tail"]) body.is-chat .stage-inner {
   max-width: none;

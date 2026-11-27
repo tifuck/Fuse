@@ -16,7 +16,7 @@ html[data-chat-view="tail"] body.is-chat {
   --tl-on-ac: var(--on-brass, var(--ink));
   --tl-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
 }
-@media (max-width: 800px) {
+@media (max-width: 800px), (pointer: coarse) {
   html[data-chat-view="tail"] body.is-chat { --tl-row: 2.25rem; }
 }
 
@@ -467,7 +467,7 @@ html[data-chat-view="tail"] body.is-chat {
   & dialog.modal :is(h2, h3) { font: 600 0.875rem/1.4 var(--mono) !important; letter-spacing: 0 !important; text-transform: none !important; }
 }
 
-/* ---- phones: 36px targets, full-width sheets with 12px top corners ---- */
+/* ---- phones: full-width sheets with 12px top corners ---- */
 @media (max-width: 800px) {
   html[data-chat-view="tail"] body.is-chat {
     --tl-sheet-top: calc(var(--safe-top, 0px) + 0.5rem);
@@ -475,56 +475,63 @@ html[data-chat-view="tail"] body.is-chat {
       top: var(--tl-sheet-top) !important; bottom: auto !important; height: calc(var(--vv-height, 100dvh) - var(--tl-sheet-top)) !important;
       border-width: 1px 0 0 !important; border-radius: var(--radius) var(--radius) 0 0 !important;
     }
-    & :is(.chat-sheet-head, .chat-view-sheet-head) { min-height: 3rem !important; padding: 0.4rem 0.4rem 0.4rem 1rem !important; }
     & :is(.chat-picker-menu, .chat-perms-menu).is-sheet { border-width: 1px 0 0 !important; border-radius: var(--radius) var(--radius) 0 0 !important; }
     & :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head { border-bottom: 1px solid var(--line) !important; background: none !important; }
     & :is(.chat-picker-menu, .chat-perms-menu).is-sheet .chat-picker-head p { color: var(--mist); font: 600 0.875rem/1.4 var(--mono) !important; letter-spacing: 0 !important; text-transform: none !important; }
-    & .chat-menu-close { width: 2.25rem !important; height: 2.25rem !important; }
-    & :is(.chat-sheet, .chat-view-menu, .chat-context-pop, .chat-artifact, dialog.modal) :is(.btn, .ap-more) { min-height: 2.25rem !important; }
-    & :is(.chat-sheet, .chat-view-menu, dialog.modal) :is(select, input:is([type="text"], [type="search"], [type="url"], :not([type])), .skills-find) { min-height: 2.25rem !important; }
     & :is(.chat-sheet, .chat-view-menu, dialog.modal) :is(textarea, select, input:is([type="text"], [type="search"], [type="url"], :not([type]))) { font-size: 16px !important; }
-    & :is(.chat-context-tab, .ap-filters > button, .skills-tab) { min-height: 2rem !important; }
-    & .chat-perms-modes > button { height: 2rem !important; border-radius: var(--tl-r-in) !important; }
     & .chat-perms-modes { border-radius: var(--tl-r) !important; }
     & .chat-perms-menu.is-sheet .chat-perms-x { border-radius: var(--tl-r-in) !important; }
-    & .chat-view-menu .ap-step { width: 2.25rem !important; height: 2.25rem !important; }
-    & .chat-wp-x { width: 2.25rem !important; height: 2.25rem !important; }
-    & .fuse-toast-x { width: 2.25rem !important; height: 2.25rem !important; }
   }
   html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
     & .chat-bar { gap: 0 !important; padding-inline: 0.25rem !important; }
-    & .chat-bar :is(.chat-history-toggle, .chat-bar-btn) { width: 2.25rem !important; height: 2.25rem !important; }
     & .chat-bar .chat-bar-actions { gap: 0 !important; }
     /* The title keeps the room: the project is its icon, and the state a mark (the line under the bar says working). */
     & .chat-bar .chat-project-chip { order: 0 !important; flex: none; width: 1.75rem; height: 1.75rem !important; justify-content: center; margin: 0; padding: 0 !important; border: 0 !important; }
     & .chat-bar .chat-project-name { display: none !important; }
     & .chat-bar .chat-bar-title { margin-left: 0.25rem; }
-    & .chat-history :is(.chat-history-collapse, .chat-new, .chat-history-iconbtn) { width: 2.25rem !important; height: 2.25rem !important; }
     & .chat-history-tabs { align-items: stretch; }
-    & .chat-history-tab { height: 2rem !important; }
-    & .chat-history-search { height: 2.25rem !important; }
     & .chat-history-search input { font-size: 16px !important; }
-    & .chat-history-search .chat-history-search-close { width: 2rem !important; height: 2rem !important; }
-    & .chat-history-item .more { width: 2.25rem !important; height: 2.25rem !important; margin-right: 0; }
-    & .chat-history-filters select { height: 2.25rem !important; }
-    & .chat-todo-dismiss { width: 2.25rem !important; height: 2.25rem !important; }
     & .chat-library { padding-inline: 0.5rem !important; }
     & .chat-library-tiles { grid-template-columns: minmax(0, 1fr) !important; }
     &.is-empty :is(.chat-welcome-kicker, .chat-welcome, .chat-welcome-note) { padding-inline: calc(0.5rem + var(--tl-g)) 0.5rem !important; }
     & .chat-artifact { border-left: 0 !important; }
     & .chat-artifact-head { min-height: 2.75rem !important; }
+    & .dictation { border-width: 1px 0 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+    & .dictation-btn.is-done { border-color: var(--tl-ac) !important; background: var(--tl-ac) !important; color: var(--on-brass, var(--ink)) !important; font-weight: 600; }
+    & .chat-wallpaper-picker { width: calc(100% - 1rem) !important; margin: 0 0.5rem 0.5rem !important; }
+    & .chat-slash { width: calc(100% - 1rem) !important; margin-inline: 0.5rem !important; }
+    & .chat-wp-keys { display: none; }
+  }
+}
+/* ---- touch (phones and tablets): 36px targets ---- */
+@media (max-width: 800px), (pointer: coarse) {
+  html[data-chat-view="tail"] body.is-chat {
+    & :is(.chat-sheet-head, .chat-view-sheet-head) { min-height: 3rem !important; padding: 0.4rem 0.4rem 0.4rem 1rem !important; }
+    & .chat-menu-close { width: 2.25rem !important; height: 2.25rem !important; }
+    & :is(.chat-sheet, .chat-view-menu, .chat-context-pop, .chat-artifact, dialog.modal) :is(.btn, .ap-more) { min-height: 2.25rem !important; }
+    & :is(.chat-sheet, .chat-view-menu, dialog.modal) :is(select, input:is([type="text"], [type="search"], [type="url"], :not([type])), .skills-find) { min-height: 2.25rem !important; }
+    & :is(.chat-context-tab, .ap-filters > button, .skills-tab) { min-height: 2rem !important; }
+    & .chat-perms-modes > button { height: 2rem !important; border-radius: var(--tl-r-in) !important; }
+    & .chat-view-menu .ap-step { width: 2.25rem !important; height: 2.25rem !important; }
+    & .chat-wp-x { width: 2.25rem !important; height: 2.25rem !important; }
+    & .fuse-toast-x { width: 2.25rem !important; height: 2.25rem !important; }
+  }
+  html[data-chat-view="tail"] body.is-chat .chat[data-view="tail"] {
+    & .chat-bar :is(.chat-history-toggle, .chat-bar-btn) { width: 2.25rem !important; height: 2.25rem !important; }
+    & .chat-history :is(.chat-history-collapse, .chat-new, .chat-history-iconbtn) { width: 2.25rem !important; height: 2.25rem !important; }
+    & .chat-history-tab { height: 2rem !important; }
+    & .chat-history-search { height: 2.25rem !important; }
+    & .chat-history-search .chat-history-search-close { width: 2rem !important; height: 2rem !important; }
+    & .chat-history-item .more { width: 2.25rem !important; height: 2.25rem !important; margin-right: 0; }
+    & .chat-history-filters select { height: 2.25rem !important; }
+    & .chat-todo-dismiss { width: 2.25rem !important; height: 2.25rem !important; }
     & .chat-artifact-tool { min-width: 2.25rem !important; height: 2.25rem !important; }
     & .chat-artifact-pick { min-height: 2.25rem !important; }
     & .chat-artifact-version select { height: 2.25rem !important; }
     & .chat-agent-view-tool { min-height: 2.25rem !important; }
     & .chat-latest { min-height: 2.25rem !important; }
     & .chat-sync button { min-height: 1.75rem; }
-    & .dictation { border-width: 1px 0 0 !important; border-radius: 0 !important; box-shadow: none !important; }
     & .dictation-btn { height: 2.75rem !important; border: 1px solid var(--tl-line2) !important; border-radius: var(--tl-r) !important; }
-    & .dictation-btn.is-done { border-color: var(--tl-ac) !important; background: var(--tl-ac) !important; color: var(--on-brass, var(--ink)) !important; font-weight: 600; }
-    & .chat-wallpaper-picker { width: calc(100% - 1rem) !important; margin: 0 0.5rem 0.5rem !important; }
-    & .chat-slash { width: calc(100% - 1rem) !important; margin-inline: 0.5rem !important; }
-    & .chat-wp-keys { display: none; }
   }
 }
 @media (prefers-reduced-motion: reduce) {
