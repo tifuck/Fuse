@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import db, permissions, workspace
-from tests.core.helpers import quick_user
+from tests.core.helpers import quick_user, wait_until_async
 from tests.core.tools._support import CardUser, make_host, new_thread
 
 ROOT = "/srv/app"
@@ -158,6 +158,27 @@ def test_stopping_the_run_closes_a_waiting_card(chat):
     verdict, _ = review(chat, "read_file", path="/etc/hosts", answer=lambda event: stop.set(), cancel=stop)
 
     assert not verdict.allowed and verdict.detail == "Tool interrupted."
+    assert [r["status"] for r in ask_rows(chat)] == ["cancelled"]
+
+
+def test_a_call_cancelled_while_its_card_waits_closes_the_card_and_tells_the_views(chat):
+    # e.g. a run_code call that Promise.all or the end of the code stopped.
+    user = CardUser(chat.uid, chat.tid)
+
+    async def body():
+        gate = permissions.Gate(user_id=chat.uid, thread_id=chat.tid, run_id="run-1", requester=None,
+                                unattended=False, notify=user, cancel=None)
+        task = asyncio.ensure_future(permissions.review(
+            tool="read_file", args={"path": "/etc/hosts"}, user_id=chat.uid, host_id=chat.host, host_alias="box",
+            root=ROOT, windows=False, gate=gate))
+        await wait_until_async(lambda: user.asks)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(body())
+    assert user.events[-1] == {"event": "permission", "kind": "tool_permission", "id": user.asks[0]["id"],
+                               "status": "cancelled"}
     assert [r["status"] for r in ask_rows(chat)] == ["cancelled"]
 
 

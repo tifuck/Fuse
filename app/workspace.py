@@ -704,6 +704,9 @@ async def _execute(name: str, arguments: str, *, user_id: int, bound_host_id, bo
         if name == "run_terminal_command":
             try:
                 await asyncio.to_thread(host_list, user_id, args.get("host"))
+                # Only run_code's calls are not split.
+                detail = ("inside run_code, host takes one alias: make one call per host, e.g. "
+                          "await Promise.all(hosts.map((host) => run_terminal_command({command, host})))")
             except WorkspaceError as exc:
                 detail = exc.detail
         return detail, _error_rec(name, detail, kind="invalid_arguments")

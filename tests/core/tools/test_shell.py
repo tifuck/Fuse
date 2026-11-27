@@ -179,6 +179,18 @@ def test_a_host_list_is_one_shell_family_of_known_hosts(ssh_host):
             workspace.host_list(ssh_host.uid, raw)
 
 
+def test_a_valid_host_list_inside_run_code_is_told_to_make_one_call_per_host(ssh_host):
+    # The runner splits a direct call's list; only run_code's calls arrive whole.
+    make_host(ssh_host.uid, "box2", default_cwd="/srv")
+    text, rec = run_async(tool(ssh_host, "run_terminal_command", command="uptime", host=["box", "box2"]))
+    assert rec["kind"] == "invalid_arguments" and text.startswith("inside run_code, host takes one alias")
+    assert "hosts.map((host) => run_terminal_command({command, host}))" in text
+
+    text, _ = run_async(tool(ssh_host, "run_terminal_command", command="uptime", host=["box", "nowhere"]))
+    assert text.startswith("nowhere: unknown host alias")
+    assert ssh_host.shell.reached == []
+
+
 def test_empty_and_oversized_commands_are_refused(ssh_host):
     text, rec = run_async(tool(ssh_host, "run_terminal_command", command="   "))
     assert rec["status"] == "error" and "command is required" in text

@@ -4,7 +4,7 @@ tool_runner.run_tools with a scripted executor (nothing reaches a host)."""
 import asyncio
 import json
 
-from app import tool_failures
+from app import code_mode, tool_failures
 from app.chat_generation import tool_jobs, tool_runner
 from tests.core.tools._support import make_host
 
@@ -154,3 +154,53 @@ def test_a_user_stop_interrupts_the_queued_calls_instead_of_skipping_them(ssh_ho
     # The model learns the queued edit never started, and the command's outcome is unknown.
     assert results[0].startswith("Tool interrupted mid-run") and "outcome is unknown" in results[0]
     assert results[1] == "Not run: the turn was interrupted before this call started. Send it again if it is still needed."
+
+
+def failing_code(monkeypatch, calls=(), kind="code_error"):
+    """run_code answered without a worker: it makes calls [(name, args)] through the runner, then fails."""
+    async def run(arguments, *, call, paused=None, owner=()):
+        for name, args in calls:
+            await call(name, args)
+        return "Error: boom", {"name": "run_code", "status": "error", "kind": kind, "error": "boom"}
+
+    monkeypatch.setattr(code_mode, "available", lambda: True)
+    monkeypatch.setattr(code_mode, "run", run)
+
+
+def code(i, text="return 1;"):
+    return call(i, "run_code", code=text, description="Look around")
+
+
+def test_a_failed_run_code_that_changed_nothing_stops_nothing(ssh_host, monkeypatch):
+    # A read-only snippet that threw.
+    failing_code(monkeypatch, [("read_file", {"path": "a.py"})])
+    execute = Exec()
+    jobs, _ = one_round(ssh_host, [code(0), call(1, "write_file", path="b.py"), code(2)], execute)
+    assert ran(execute) == ["a.py", "b.py", "a.py"]
+    assert all(j.trace.get("kind") != "not_run" for j in jobs)
+
+    # A run that never ran.
+    failing_code(monkeypatch, kind="busy")
+    execute = Exec()
+    one_round(ssh_host, [code(0), call(1, "write_file", path="b.py")], execute)
+    assert ran(execute) == ["b.py"]
+
+
+def test_a_failed_run_code_that_started_a_change_stops_later_changes_and_runs(ssh_host, monkeypatch):
+    failing_code(monkeypatch, [("write_file", {"path": "a.py"})])
+    execute = Exec()
+    jobs, _ = one_round(ssh_host, [code(0), call(1, "write_file", path="b.py"), code(2, "return 2;")], execute)
+
+    assert ran(execute) == ["a.py"]
+    _, write, held = [j for j in jobs if not j.parent]
+    assert write.trace["kind"] == held.trace["kind"] == "not_run"
+    # The held-back run still shows its code.
+    assert held.trace["code"] == "return 2;"
+
+
+def test_kill_command_runs_after_a_failure_and_keeps_its_order(ssh_host):
+    execute = Exec({"make": {"exit_code": 1}})
+    one_round(ssh_host, [call(0, "run_terminal_command", command="make"), call(1, "kill_command", id="job-1"),
+                         call(2, "write_file", path="a.txt")], execute)
+
+    assert [name for name, _, _ in execute.calls] == ["run_terminal_command", "kill_command"]

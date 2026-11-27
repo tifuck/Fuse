@@ -1363,8 +1363,9 @@ async def execute_tool(
     ):
         if not coding:
             return unknown_tool_reply(name, arguments, coding=False)
-        if loaded is not None and name not in loaded:
-            return not_loaded_reply(name)
+        # Before the loaded check: run_code reaches these unloaded, and these
+        # agents cannot load them (search_tools refuses), so "load it" would be
+        # wrong advice.
         kind = str((session or {}).get("subagent_type") or "")
         if kind == "explore" and name in ("write_file", "search_replace"):
             msg = "explore subagents cannot write files."
@@ -1372,6 +1373,8 @@ async def execute_tool(
         if kind == "plan" and name in ("write_file", "search_replace", "run_terminal_command", "monitor"):
             msg = "plan subagents cannot run shell or write files."
             return msg, {"name": name, "status": "error", "kind": "denied", "error": msg}
+        if loaded is not None and name not in loaded:
+            return not_loaded_reply(name)
         from . import chats, workspace
 
         text, rec = await workspace.execute(
