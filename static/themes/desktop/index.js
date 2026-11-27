@@ -170,6 +170,7 @@ export function createDesktopTheme(runtime) {
     get setToolReveal() { return runtime.setToolReveal; },
   }));
   Object.assign(theme, createToolFormatting({
+    get ccNotRun() { return theme.ccNotRun; },
     get ccCallClockHtml() { return theme.ccCallClockHtml; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
     get ccFlat() { return theme.ccFlat; },
@@ -252,6 +253,7 @@ export function createDesktopTheme(runtime) {
     get todoClosed() { return runtime.todoClosed; },
   }));
   Object.assign(theme, createToolRows({
+    get ccNotRun() { return theme.ccNotRun; },
     get STEP_ICONS() { return theme.STEP_ICONS; },
     get agentTraceWorkMs() { return theme.agentTraceWorkMs; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
@@ -352,6 +354,7 @@ export function createDesktopTheme(runtime) {
     get ccDuration() { return theme.ccDuration; },
     get ccElapsedText() { return theme.ccElapsedText; },
     get ccErrorFold() { return theme.ccErrorFold; },
+    get ccNotRun() { return theme.ccNotRun; },
     get ccExitMeaning() { return theme.ccExitMeaning; },
     get ccFlat() { return theme.ccFlat; },
     get ccLiveText() { return theme.ccLiveText; },
@@ -387,6 +390,7 @@ export function createDesktopTheme(runtime) {
     get toolStepHtml() { return theme.toolStepHtml; },
   }));
   Object.assign(theme, createActivityGroups({
+    get ccNotRun() { return theme.ccNotRun; },
     get activeRun() { return runtime.activeRun; },
     get agentLive() { return runtime.agentLive; },
     get agentsRows() { return runtime.agentsRows; },

@@ -40,7 +40,7 @@ function toolDetailHtml(trace, failed, running) {
     const sections = [];
     const hasImage = trace.name === "read_file" && trace.image && !failed && !running;
     if (hasImage) sections.push(toolImageHtml(trace));
-    const error = failed ? trace.error || trace.summary || trace.preview || "The tool failed without an error message."
+    const error = failed ? deps.ccNotRun(trace) || trace.error || trace.summary || trace.preview || "The tool failed without an error message."
       : ["interrupted", "cancelled"].includes(trace.status) || ["cancelled", "interrupted", "lost"].includes(deps.executionState(trace)) ? trace.error || "" : "";
     if (error) sections.push(deps.failNoteHtml(error));
     const inputs = [trace.command, trace.path, trace.pattern, trace.url, deps.searchQueries(trace).join("\n"), trace.description, trace.title];

@@ -194,7 +194,7 @@ function ccErrorFold(lines, tail = false) {
     if (!all.length) all.push("failed");
     // A provider failure (a subagent's model call) reads like the chat's error card.
     all[0] = deps.providerErrorLine(all[0]);
-    if (!/^(Error|Cancelled): /.test(all[0])) all[0] = `Error: ${all[0]}`;
+    if (!/^(Error|Cancelled|Not run): /.test(all[0])) all[0] = `Error: ${all[0]}`;
     if (tail) all.push(all.shift());
     const hidden = Math.max(0, all.length - 10);
     const html = (rows) => `<div class="chat-console-lines is-error">${rows.map((line) => `<div class="chat-console-stdout">${deps.renderAnsi(line) || " "}</div>`).join("")}</div>`;
@@ -207,7 +207,22 @@ function ccErrorFold(lines, tail = false) {
     };
   }
 
+// A call the step gate held back. Its trace text is written for the model
+// ("[Fuse] Not run: run_terminal_command scripts/test.sh exited 1 earlier in
+// this step. … Send this call again …"); the row says only what happened and
+// why: "Not run: scripts/test.sh exited 1 earlier in this step". Text of
+// another shape is kept whole. "" for any other call.
+function ccNotRun(trace) {
+    if (trace?.kind !== "not_run") return "";
+    const text = String(trace.error || "").trim();
+    const said = text.match(/^\[Fuse\] Not run: (.+?) earlier in this step\./);
+    if (!said) return text || "Not run";
+    // The tool's own name goes when a path or command names the call.
+    const cause = said[1].replace(/^[a-z]+(?:_[a-z]+)+ (?=\S.* (?:failed|was interrupted|exited -?\d+|moved to the background)\b)/, "");
+    return `Not run: ${cause} earlier in this step`;
+  }
+
 const CC_COMPACT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
 
-  return { consoleFreezeThoughtTimes, ccVowels, ccIng, ccPast, ccCase, ccVerbLike, ccChain, ccInflect, ccRunningForm, ccTimeoutText, ccDuration, ccFlat, ccClip, ccTokens, ccBytes, ccErrorFold, CC_COMPACT };
+  return { consoleFreezeThoughtTimes, ccVowels, ccIng, ccPast, ccCase, ccVerbLike, ccChain, ccInflect, ccRunningForm, ccTimeoutText, ccDuration, ccFlat, ccClip, ccTokens, ccBytes, ccErrorFold, ccNotRun, CC_COMPACT };
 }

@@ -213,6 +213,42 @@ test('desktop rows read as sentences: a described command in the past tense once
   assert.equal(text({ name: 'list_dir', ...root }), 'Listeddemo', 'it reads by its name');
 });
 
+test('desktop rows say a call the step gate held back did not run, for every tool it holds back', async () => {
+  const lexicon = (await import('../../static/themes/desktop/verb-lexicon.js')).create({});
+  const words = (await import('../../static/themes/desktop/call-semantics.js')).create(lexicon);
+  const rows = (await import('../../static/themes/desktop/tool-formatting.js')).create({
+    ...words, escapeHtml: String, ccCallClockHtml: () => '', ccLiveText: () => '', ccSedEdit: () => null,
+    ccExitMeaning: (_command, exit) => ({ isError: exit > 0 }), shellExitCode: (trace) => trace.exit_code ?? null,
+    toolBackground: () => false, sessionProject: () => null, messages: [], executionState: () => '',
+    consoleVerb: (name) => ({ run_terminal_command: 'Run', write_file: 'Write', search_replace: 'Edit', monitor: 'Monitor', kill_command: 'Stop', run_code: 'Code' })[name],
+  });
+  const failed = { state: 'error', failed: true };
+  const text = (trace) => rows.consoleCallHtml({ kind: 'not_run', status: 'error', ...trace }, failed).replace(/<[^>]*>|[()]/g, ' ').replace(/\s+/g, ' ').trim();
+  assert.equal(text({ name: 'run_terminal_command', command: 'git tag v1.4.0', description: 'Tag the release' }), 'Did not run Tag the release');
+  assert.equal(text({ name: 'run_terminal_command', command: 'make test', description: 'Run the test suite' }), 'Did not run the test suite', 'not "Failed to run"');
+  assert.equal(text({ name: 'run_terminal_command', command: 'git tag v1.4.0' }), 'Did not run git tag v1.4.0');
+  assert.equal(text({ name: 'write_file', path: 'app/main.py' }), 'Did not write main.py in app');
+  assert.equal(text({ name: 'search_replace', path: 'app/main.py' }), 'Did not edit main.py in app');
+  assert.equal(text({ name: 'monitor', description: 'errors in app.log' }), 'Did not watch “errors in app.log”');
+  assert.equal(text({ name: 'kill_command', description: 'the dev server' }), 'Did not stop “the dev server”');
+  assert.equal(rows.rowSentence('Build the release', failed, false, true).lead, 'Did not build', 'a described script too');
+});
+
+test('a held-back call reads its reason in the user\'s words, in every theme', async () => {
+  const gate = (cause) => `[Fuse] Not run: ${cause} earlier in this step. Calls that change a host run in order and stop at the first failure. Send this call again when it is still needed.`;
+  for (const theme of ['console', 'tail', 'desktop']) {
+    const { ccNotRun, ccErrorFold } = (await import(`../../static/themes/${theme}/call-semantics.js`)).create({ providerErrorLine: String, renderAnsi: String });
+    const said = (error) => ccNotRun({ kind: 'not_run', error });
+    assert.equal(said(gate('run_terminal_command scripts/test.sh exited 1')), 'Not run: scripts/test.sh exited 1 earlier in this step', theme);
+    assert.equal(said(gate('write_file app/x.py failed')), 'Not run: app/x.py failed earlier in this step', theme);
+    assert.equal(said(gate('run_code failed')), 'Not run: run_code failed earlier in this step', `${theme}: no subject keeps the tool's name`);
+    assert.equal(said('Not run for another reason.'), 'Not run for another reason.', `${theme}: another shape stays whole`);
+    assert.equal(ccNotRun({ kind: undefined, error: gate('x failed') }), '', `${theme}: only a held-back call`);
+    const fold = ccErrorFold([said(gate('run_terminal_command scripts/test.sh exited 1'))]);
+    assert.doesNotMatch(fold.status + fold.preview, /Error: Not run/, `${theme}: no "Error:" before "Not run"`);
+  }
+});
+
 test('a Console or Tail todo row says what the call changed, naming a single todo', async () => {
   const list = (...statuses) => statuses.map((status, index) => ({ id: String(index + 1), content: `todo ${index + 1}`, status }));
   const first = { name: 'todo_write', todos: list('pending', 'pending', 'pending') };
