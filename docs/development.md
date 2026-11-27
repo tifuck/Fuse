@@ -143,17 +143,30 @@ calls. `app/code_mode.py` starts one `app/code_worker.py` process per run (a
 `mini-racer` V8 isolate, jitless, empty environment, CPU/data/file/fd limits,
 no new processes, no_new_privs, killed at its deadline); each helper call
 comes back over the pipe and `tool_runner.run_tools` runs it as a child
-`ToolJob` of the same round (`parent` set, same `call_id`), so the gate,
-confinement and rows apply as to a direct call. Only the parent's
-text reaches the model (`tool_jobs._call_result`); child traces carry `parent`
-and sit under their run_code row; a run's reads past the first 40 draw no row.
-The deadline stops while a permission prompt waits. A result over 24,000
+`ToolJob` of the same round (`parent` set, same `call_id`), so the permission
+gate, confinement and rows apply as to a direct call (the step gate below
+does not: inside a snippet changes are gated by `code_mode` itself). Only the
+parent's text reaches the model (`tool_jobs._call_result`); child traces carry
+`parent` and sit under their run_code row (the running row carries the code);
+a run's reads past the first 40 draw no row, and the failure log records the
+calls a snippet made with phase `code`. The deadline stops while a permission
+prompt waits. A helper takes its argument object, or a string (the path,
+pattern or command) and an optional options object, merged as `sh` merges
+them. The value comes back as text: a string as it is; a plain object holding
+multi-line text as `key: <JSON>` lines and a `--- key ---` block per such
+text; anything else as JSON (Error, Map, Set and BigInt get a readable form,
+in `console.log` too). Inside a snippet, changes on one host run in order,
+and one the code sent while an earlier one still had no reply does not run
+when that earlier one failed (`Not run: …`, as for direct calls in a step); a
+call sent after the code saw the earlier result always runs. A result over 24,000
 characters reaches the model cut, with an id; `code_mode.keep` holds the whole
 text in memory for 30 minutes, per user and chat, and a later
-run reads the rest with `read_result(id, {offset, limit})`. A server running as root
-also gives each worker its own empty network namespace and uid 65534; without
-root the worker keeps the server's uid. `CODE_MODE=false`, or a missing
-`mini-racer`, turns it off.
+run reads the rest with `read_result(id, {offset, limit})`. The worker sandboxes
+itself with its own empty network namespace and uid 65534, which needs a server
+running as root (and, in a container, CAP_SYS_ADMIN). When it cannot, it runs
+nothing: the call answers kind `unavailable` and run_code is off until a
+restart (no longer listed, the prompt without code mode, later calls answered
+`unavailable`). `CODE_MODE=false`, or a missing `mini-racer`, turns it off.
 
 Calls of one step that change a host (write_file, search_replace,
 run_terminal_command, monitor, kill_command, run_code) run in order per host,
@@ -163,13 +176,16 @@ gate in `tool_runner.worker`. They come back with status error, kind
 `not_run` and a text starting `[Fuse] Not run:` that names the first failing
 call; they are not logged as tool failures and do not count for the stall
 guard. Reads and non-host tools still run. run_code names no host, so a failed
-run stops later changes on every host and any earlier failure stops a later
-run. A user stop is not a skip (`tool_jobs._interrupted`). So dependent calls
+run stops later changes on every host, but only when one of its own
+host-changing calls started (a snippet that only read, or a run that never
+ran, stops nothing); any earlier failure stops a later run. kill_command keeps
+its order but is never held back. A user stop is not a skip (`tool_jobs._interrupted`). So dependent calls
 (edit, test, commit) can go in one step. Inside a snippet the same is
 `sh(command, options)`: it returns the output and throws unless the command
 exits 0, which ends the run with kind `command_failed` (a command that failed,
 not broken code: the failure log keeps that kind, and `code_error`, whatever
-the output says); its result shows the output and the calls that finished,
+the output says; `timeout`, `memory` and `cpu` are the code's limits,
+`worker` and `busy` Fuse's or the server's); its result shows the output and the calls that finished,
 with exit codes. A run cut off mid-way lists its finished commands with their
 exit codes too.
 
@@ -183,9 +199,10 @@ scratch, an edit) sent with the next. The Tools rules (`_BATCH`, `_BATCH_CODE`)
 state the gate, and `|| true` for a non-zero exit that is no failure. Three
 tips in `chat_generation/tool_jobs.py` correct a turn that drifts, on its next
 tool result: `wrap_tip` from the first run_code call that only passed one call
-through (one is enough for a model to copy; repeated, `WRAP_TIPS` = 10 times a
-turn at most; a wrapped `sh` is still one, without the exit-code claim, and a
-failed run leaves the count alone); `ack_tip` from the second step of a turn
+through (one call, three lines or fewer, nothing done to its result; one is enough for a model to copy; repeated, `WRAP_TIPS` = 10 times a
+turn at most; a wrapped `sh` is still one, without the exit-code claim, which
+is made only when the code returned a command's `.output`, and a failed run
+leaves the count alone); `ack_tip` from the second step of a turn
 that was one call whose result the next did not need (todo_write or scratch,
 an edit or write that worked, a command that exited 0 with under 120
 characters of output; never run_code), then on each one after, `ACK_TIPS` = 10
