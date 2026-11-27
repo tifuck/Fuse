@@ -126,6 +126,9 @@ function highlightCode(lang, code) {
     const source = String(code || "");
     if (deps.detailProbe) return deps.escapeHtml(source);
     const language = codeLanguage(lang);
+    if (!window.hljs && language && source && source.length <= 100000 && loadHljs()) {
+      return `<span data-hljs-wait="${deps.escapeHtml(language)}">${deps.escapeHtml(source)}</span>`;
+    }
     if (!window.hljs || !language || source.length > 100000 || !window.hljs.getLanguage(language)) {
       return deps.escapeHtml(source);
     }
@@ -143,6 +146,25 @@ function highlightCode(lang, code) {
     }
     _hljsCache.set(key, html);
     return html;
+  }
+
+// highlight.js loads the first time a block asks for a language; the page
+// names its versioned URL (templates/chat.html, #hljs-src). Until it lands,
+// text is drawn plain in a [data-hljs-wait] span, highlighted in place once it
+// does. False when it cannot load: the text stays plain.
+function loadHljs() {
+    if (_hljsLoad) return _hljsLoad !== "failed";
+    let src = "";
+    try { src = JSON.parse(document.getElementById("hljs-src")?.textContent || '""'); } catch (_) {}
+    if (!src) { _hljsLoad = "failed"; return false; }
+    _hljsLoad = document.createElement("script");
+    _hljsLoad.src = src;
+    _hljsLoad.onerror = () => { _hljsLoad = "failed"; };
+    _hljsLoad.onload = () => document.querySelectorAll("[data-hljs-wait]").forEach((el) => {
+      el.outerHTML = highlightCode(el.dataset.hljsWait, el.textContent);
+    });
+    document.head.appendChild(_hljsLoad);
+    return true;
   }
 
 // open: a fence still being streamed. It is drawn as plain text, so each
@@ -325,6 +347,8 @@ const ACTION_ICONS = {
 const _hljsCache = new Map();
 
 const _HLJS_CACHE_MAX = 600;
+
+let _hljsLoad = null;
 
 const MD_ALERTS = { note: "Note", tip: "Tip", important: "Important", warning: "Warning", caution: "Caution" };
 
