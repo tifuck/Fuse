@@ -6,8 +6,8 @@
 Run from the dev tree. Creates the QA account once and keeps it an admin (so
 the QA browser, scripts/qa/shot.mjs, can open the admin pages; it aborts every
 write), keeps its password in data/dev-qa-login.json (gitignored, mode 0600;
-never printed) and replaces the account's chats, artifacts and skill drafts
-with the "QA · " fixtures below, so every run leaves the same data.
+never printed) and replaces the account's chats, artifacts, skill drafts and
+memories with the "QA · " fixtures below, so every run leaves the same data.
 
 Writing a chat: THREADS lists (title, builder). A builder returns messages
 made with user(text) and reply(*parts), where a part is reply text,
@@ -815,10 +815,21 @@ THREADS = [
 ]
 
 
+# Saved memories for Settings › Memory: global ones and one in the demo project.
+QA_MEMORIES = (
+    ("prefers-short-answers", "user", "Wants short, direct replies without recaps",
+     "Answer first, then the reason. No closing summary.", False),
+    ("staging-dashboard", "reference", "Demo staging health checks live at staging.demo.invalid/status",
+     "https://staging.demo.invalid/status shows the staging health checks.", False),
+    ("release-freeze-fridays", "project", "No releases of the demo project on Fridays",
+     "Releases wait until Monday.\nWhy: nobody is on call at weekends.\nApplies: every release of demo.", True),
+)
+
+
 def _seed(uid: int) -> list[str]:
     """Replace the account's chats (and artifacts) with the fixtures; newest last.
     The artifact chat's calls name a real artifact, so its card opens."""
-    from app import artifacts, chat_threads, db, skill_proposals
+    from app import artifacts, chat_threads, db, memory, skill_proposals
 
     db.execute("DELETE FROM chat_runs WHERE user_id=?", (uid,))  # no foreign key takes them with their thread
     db.execute("DELETE FROM chat_threads WHERE user_id=?", (uid,))
@@ -857,6 +868,11 @@ def _seed(uid: int) -> list[str]:
         if build is artifacts_thread:
             artifacts.update(uid, art, html=ARTIFACT_V2, thread_id=pk)
         titles.append(title)
+    db.execute("DELETE FROM memories WHERE user_id=?", (uid,))
+    _host_id, project_id = _choices_project(uid)
+    for name, kind, description, body, in_project in QA_MEMORIES:
+        memory.save(uid, name=name, type=kind, description=description, body=body,
+                    project_id=project_id if in_project else None, thread_id=pk)
     return titles
 
 

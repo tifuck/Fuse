@@ -102,11 +102,10 @@
 <section class="panel set" id="memory" aria-labelledby="set-memory-title" data-memory-list>
   <header class="set-head">
     <h2 id="set-memory-title">Memory</h2>
-    <p>What chats have saved. Global memories reach every chat; project memories reach that project's chats. A chat can turn memory off for itself in its Context sheet.</p>
+    <p>What chats have saved. Global memories reach every chat; project memories reach that project's chats. Open a memory to edit or delete it. A chat can turn memory off for itself in its Context sheet.</p>
   </header>
-  {% if memories %}
   {% for m in memories %}
-  <details class="set-row set-mem" data-memory-id="{{ m.id }}">
+  <details class="set-row set-mem" data-memory-id="{{ m.id }}" data-memory-scope="{{ m.project or 'global' }}">
     <summary class="set-label"><strong>{{ m.name }}</strong><span>{{ m.type }} · {{ m.project or "global" }} · {{ m.description }}</span></summary>
     <form class="set-control" data-memory-form>
       <label><span>Type</span> <select name="type">{% for t in memory_types %}<option value="{{ t }}"{% if t == m.type %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
@@ -121,9 +120,7 @@
     </form>
   </details>
   {% endfor %}
-  {% else %}
-  <p class="set-row set-note">No memories saved yet.{% if not context.memory %} Turn on Memory in Chat defaults first.{% endif %}</p>
-  {% endif %}
+  <p class="set-row set-note"{% if memories %} hidden{% endif %} data-memory-empty>No memories saved yet.{% if not context.memory %} Turn on Memory in Chat defaults first.{% endif %}</p>
 </section>
 
 <section class="panel set" id="secrets" aria-labelledby="set-secrets-title" data-secrets>
