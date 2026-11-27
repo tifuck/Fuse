@@ -269,8 +269,8 @@ function consoleFold(trace, presentation, verbose) {
   }
 
 // run_code: the └ line counts its calls in the summary line's words; opened,
-// the calls hang under it as a tree, each opening its own output, then the
-// code and what it returned.
+// its code, the calls it made and what it returned hang under it as a tree,
+// each opening to its own text.
 const CODE_CALL_WORDS = {
     glob: ["searched for", "pattern", "patterns"], grep: ["searched for", "pattern", "patterns"], read_file: ["read", "file", "files"],
     list_dir: ["listed", "directory", "directories"], search_replace: ["edited", "file", "files"], write_file: ["wrote", "file", "files"],
@@ -331,6 +331,13 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
       return { key: c.key, head, body, state: p.state, tool: c.trace.name, title: command || c.trace.path || "" };
     };
     const items = [];
+    // In the order they happened: the code, the calls it made, then what it
+    // returned (or its error).
+    if (parts.code) {
+      const n = parts.code.split("\n").length;
+      items.push({ key: `${key}:code`, state: "done", head: `<span class="chat-console-call"><span class="chat-tool-action">Source</span>(${n} ${n === 1 ? "line" : "lines"} of JavaScript)</span>`,
+        body: `<pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre>` });
+    }
     for (let at = 0; at < calls.length;) {
       // Three or more finished reads in a row are one row; it opens to them.
       let end = at;
@@ -349,20 +356,15 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
         body: `<div class="chat-console-codetree">${tree(group.map(callRow))}</div>` });
       at = end;
     }
-    if (parts.code) {
-      // A failed run's text is its error, the calls that finished before it
-      // and its console output: shown, not dropped.
-      const out = parts.result.trim();
-      const ret = out ? `<div class="chat-console-codepart"><span class="chat-console-dim">${failed ? "Error" : "Returned"}</span><pre class="chat-console-out is-stdout${failed ? " is-error" : ""}">${deps.escapeHtml(parts.result)}</pre>${consoleTruncationNote(trace)}</div>` : "";
-      const n = parts.code.split("\n").length;
-      // Like its sibling rows, the result follows the call: a one-line value
-      // itself, else how long it is.
-      const lines = out ? out.split("\n") : [];
-      const meta = !out ? "" : failed ? "Error" : lines.length === 1 ? `Returned ${deps.toolText(lines[0], 80)}` : `Returned ${lines.length} lines`;
-      items.push({ key: `${key}:code`, state: "done",
-        head: `<span class="chat-console-call"><span class="chat-tool-action">Source</span>(${n} ${n === 1 ? "line" : "lines"} of JavaScript)</span>` +
-          (meta ? `<span class="chat-console-dim chat-console-codemeta">${deps.escapeHtml(meta)}</span>` : ""),
-        body: `${ret}<div class="chat-console-codepart"><span class="chat-console-dim">Code</span><pre class="chat-console-out is-code"><code>${deps.highlightCode("javascript", parts.code)}</code></pre></div>` });
+    // A failed run's text is its error, the calls that finished before it
+    // and its console output: shown, not dropped. The row names it like a
+    // call's result: a one-line value itself, else how long it is.
+    const out = parts.result.trim();
+    if (parts.code && out) {
+      const lines = out.split("\n");
+      const said = lines.length === 1 ? deps.toolText(lines[0], 80) : `${lines.length} lines`;
+      items.push({ key: `${key}:out`, state: "done", head: `<span class="chat-console-call"><span class="chat-tool-action">${failed ? "Error" : "Returned"}</span>(${deps.escapeHtml(said)})</span>`,
+        body: `<pre class="chat-console-out is-stdout${failed ? " is-error" : ""}">${deps.escapeHtml(parts.result)}</pre>${consoleTruncationNote(trace)}` });
     }
     return { status: statusHtml.replace(/<[^>]*>/g, ""), statusHtml, preview: "", full: items.length ? `<div class="chat-console-codetree">${tree(items)}</div>` : "" };
   }

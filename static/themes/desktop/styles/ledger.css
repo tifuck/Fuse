@@ -138,7 +138,7 @@ html[data-chat-view="desktop"] body.is-chat .chat[data-view="desktop"] {
   & .chat-console-bundle .chat-step.is-console-call .chat-step-label > .chat-console-result-text { display: block; flex-shrink: 0; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
   & .chat-console-bundle .chat-step-label > .chat-console-result-text b { font-weight: 400; }
   & .chat-console-bundle .chat-step.is-console-call.is-error .chat-step-label .chat-tool-action { color: var(--dk-mute, var(--mute)); }
-  & .chat-console-bundle .chat-step.is-console-call:is(.is-error, .is-interrupted) .chat-step-label > .chat-console-result-text { color: var(--call-fail); }
+  & .chat-console-bundle .chat-step.is-console-call:is(.is-error, .is-interrupted) > .chat-step-main > .chat-step-head .chat-step-label > .chat-console-result-text { color: var(--call-fail); }
   @media (max-width: 480px) {
     & .chat-console-bundle .chat-step.is-console-call:not(.is-error, .is-interrupted) .chat-step-label > .chat-console-result-text:not(:has(.dk-plus, .dk-minus)) { display: none; }
   }
