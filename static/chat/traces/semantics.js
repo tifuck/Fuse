@@ -200,8 +200,10 @@ function applyCommandResult(trace, result) {
 function wakeStepTrace(result) {
   const monitor = Boolean(result.monitor);
   const liveEvent = result.tag === "monitor_event";
+  // A run_code that moved to the background (app/command_jobs.py kind code) reports as "run_code: <description>".
+  const code = !monitor && /^run_code: /.test(String(result.command || ""));
   const trace = {
-    name: monitor ? "monitor" : "run_terminal_command",
+    name: monitor ? "monitor" : code ? "run_code" : "run_terminal_command",
     status: liveEvent ? "running" : result.state === "completed" ? "done" : "error",
     host: result.host,
     command: result.command || result.id,
@@ -318,7 +320,7 @@ function foldAutoCommandResults(rows) {
     }
     const results = items.map((item) => item.kind === "command" ? item.result : null);
     const findTrace = (id) => {
-      for (const name of ["run_terminal_command", "get_command_output", "monitor"]) {
+      for (const name of ["run_terminal_command", "get_command_output", "monitor", "run_code"]) {
         for (let i = 0; i < index; i++) {
           const prev = rows[i];
           if (prev.role !== "assistant" || !Array.isArray(prev.tools)) continue;

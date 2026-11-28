@@ -275,6 +275,8 @@ const CODE_CALL_WORDS = {
     glob: ["searched for", "pattern", "patterns"], grep: ["searched for", "pattern", "patterns"], read_file: ["read", "file", "files"],
     list_dir: ["listed", "directory", "directories"], search_replace: ["edited", "file", "files"], write_file: ["wrote", "file", "files"],
     run_terminal_command: ["ran", "shell command", "shell commands"], read_result: ["read", "kept result", "kept results"],
+    web_search: ["ran", "web search", "web searches"], read_url: ["read", "web page", "web pages"],
+    spawn_subagent: ["started", "subagent", "subagents"], get_subagent_output: ["waited for", "subagent", "subagents"],
   };
 // An opened shell row's first lines: the command, "$ " before its first
 // line, every wrapped or later line indented under the command's text.
@@ -307,6 +309,9 @@ function consoleCodeFold(trace, presentation, calls, live, openMap, key) {
     const statusHtml = notRun ? `<span class="chat-console-codeerr">${deps.escapeHtml(errorLine)}</span>`
       : failed ? `${callsHtml} <span class="chat-console-codeerr">${deps.escapeHtml(/^Error: /.test(errorLine) ? errorLine : `Error: ${errorLine}`)}</span>`
       : interrupted ? `Stopped, <b>${finished}</b> of <b>${total}</b> ${noun(total)} finished`
+      // A run moved to the background goes on after its turn; its result comes as a delivery of its own.
+      : running && deps.toolBackground(trace) && !trace.backgroundResult
+        ? `Moved to the background${total ? `, <b>${total}</b> ${noun(total)} before` : ""}`
       : running ? (total ? `Running, <b>${total}</b> ${noun(total)} so far` : "Running…")
       : total ? callsHtml : "No calls";
     const row = (rowKey, branch, head, body, state, tool, title = "") => {
