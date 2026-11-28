@@ -369,7 +369,8 @@ def _normalize_launch(
 ) -> tuple[str, str, bool, int]:
     from . import monitor as monitor_mod
 
-    kind = "monitor" if str(kind or "") == "monitor" else "command"
+    # "code": a run_code that moved to the background (app/code_mode.py).
+    kind = str(kind or "") if str(kind or "") in ("monitor", "code") else "command"
     if kind == "monitor":
         background = True
     source = "ws" if (kind == "monitor" and url and not command) else "command"
@@ -726,7 +727,7 @@ async def _supervise(rec: dict, runner) -> None:
         extra = ""
         if _is_monitor(rec):
             extra = f"; {int(rec.get('event_count') or 0)} events"
-        label = "monitor" if _is_monitor(rec) else "command"
+        label = "monitor" if _is_monitor(rec) else "run_code" if rec.get("kind") == "code" else "command"
         if rec.get("background_deadline") is not None and not _is_monitor(rec):
             description = rec.get("description") or str(rec.get("command") or "")[:80]
             error = f'Background command "{description}" was stopped after reaching its background time limit'
@@ -1089,7 +1090,8 @@ def notification(rec: dict) -> str:
     if fields["output_mode"] == "tail" or len(out) > 1500:
         lines.append("output: partial (total unknown)" if fields["output_mode"] == "partial" else "output: retained tail")
     lines.append("")
-    lines.append(out[-1500:] if out else "(no output)")
+    # A run_code's result is its value first: whole (code_mode keeps it short), not its tail.
+    lines.append((out if rec.get("kind") == "code" else out[-1500:]) or "(no output)")
     lines.append("</command_result>")
     return "\n".join(lines)
 

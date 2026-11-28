@@ -341,12 +341,12 @@ def _code_mode(helpers: str, single: str, uses: str) -> str:
         f"{ahead}"
         "  - You want several results whole and none depends on another: direct calls together in one step.\n"
         f"- A snippet suits: {uses}\n"
-        "- Code cannot do: background commands, monitor, get_command_output, kill_command, web, subagents, "
-        "artifacts, todo_write, scratch, skills.\n"
+        "- Code cannot do: monitor, get_command_output, kill_command, artifacts, todo_write, scratch, skills.\n"
         "- How: plain JavaScript, not Node.js (no require, import, fs, child_process or process). Write "
         "`await read_file(\"src/app.py\")`, run independent calls together with `await Promise.all(...)`, and "
-        "end with `return`. Inside a backtick string `${x}` is JavaScript: write shell commands and edit text "
-        "that contains `${` or backticks as '…' or \"…\" strings. Return findings with path:line (line numbers "
+        "end with `return` (or the value as the last expression). Inside a plain backtick string `${x}` is "
+        "JavaScript: write shell commands and edit text that contains `${` or backticks as '…' or \"…\" strings; "
+        "in $`…` each `${}` value is quoted as one shell argument. Return findings with path:line (line numbers "
         "come from grep, or are the index + 1 after splitting a file's text), not whole files. Example (each read "
         "follows from the glob, and only the matching lines come back):\n"
         "  const files = (await glob(\"src/**/*.js\")).split(\"\\n\").filter((p) => p && !p.startsWith(\"(\"));\n"
@@ -361,7 +361,8 @@ def _code_mode(helpers: str, single: str, uses: str) -> str:
 
 
 _CODE_MODE = _code_mode(
-    "read_file, list_dir, grep, glob, write_file, search_replace and run_terminal_command",
+    "read_file, list_dir, grep, glob, write_file, search_replace, run_terminal_command, web_search, read_url and "
+    "spawn_subagent",
     "one command, one read, one grep",
     "finding where something is defined or used (grep, read the matches, return the lines); the same edit in "
     "several files (grep for them, then search_replace each); comparing or counting across many files; running "

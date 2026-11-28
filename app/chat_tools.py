@@ -707,12 +707,24 @@ def suggest_tool(bad_name: str, arguments: str = "", *, coding: bool = False) ->
     return best if best_score >= 2 else None
 
 
+# Functions only run_code's code has (app/code_worker.py); the rest share a tool's name.
+_CODE_ONLY = frozenset({"read_result", "sh", "$", "edit", "write", "file", "preview", "sleep", "log"})
+
+
 def unknown_tool_reply(name: str, arguments: str = "", *, coding: bool = False, loaded=None) -> tuple[str, dict]:
     """Actionable reply for a tool name that does not exist in this context."""
     norm = _norm_tool_name(name)
     base_list = ", ".join(_BASE_TOOL_IDS)
-    guess = suggest_tool(name, arguments, coding=coding)
     trace = {"name": name, "status": "error", "kind": "unknown_tool"}
+    from . import code_mode
+
+    if coding and name in _CODE_ONLY and code_mode.available():
+        # A run_code helper (a cut note names read_result) called as a tool of its own.
+        text = (f"Unknown tool '{name}'. {name} is a function inside run_code's code, not a tool: call it there, "
+                f"e.g. run_code({{code: \"await {name}(...)\", description: \"...\"}}).")
+        trace["error"] = text
+        return text, trace
+    guess = suggest_tool(name, arguments, coding=coding)
     if not guess:
         if norm and norm in _tool_universe(True):
             text = (
