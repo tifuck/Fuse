@@ -261,7 +261,10 @@ def _declared():
 
 def test_every_parameter_run_code_declares_is_one_the_real_tool_takes():
     declared = _declared()
-    assert set(declared) == set(HELPERS) | {"sh"}
+    # The web and subagent helpers take their tools' arguments as they are; the description names them in a line.
+    named = {"web_search", "read_url", "spawn_subagent", "get_subagent_output"}
+    also = next(line for line in code_mode.SCHEMA["function"]["description"].splitlines() if line.startswith("Also: "))
+    assert set(declared) == (set(HELPERS) - named) | {"sh"} and all(name in also for name in named)
     declared["sh"]["command"] = ("string", False)
     for name, params in declared.items():
         real = code_mode._schema("run_terminal_command" if name == "sh" else name)["function"]["parameters"]

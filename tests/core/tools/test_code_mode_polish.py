@@ -184,7 +184,7 @@ def test_the_description_states_how_long_results_are_kept_and_which_exit_1_is_no
     desc = code_mode.SCHEMA["function"]["description"]
     sh_line = next(line for line in desc.splitlines() if line.startswith("declare function sh("))
     assert f"kept {code_mode.KEEP_S // 60} minutes" in desc
-    assert "exit 1 from grep, rg, find, diff or test is no failure" in sh_line
+    assert "exit 1 from grep, rg, find, diff or test alone is no failure" in sh_line
 
 
 def test_once_its_sandbox_failed_run_code_is_not_offered_and_a_call_says_so(monkeypatch):
