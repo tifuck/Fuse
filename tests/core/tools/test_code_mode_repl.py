@@ -81,13 +81,29 @@ def test_the_last_expression_is_the_value_and_promises_in_it_are_awaited():
 def test_dollar_quotes_each_value_for_the_shell_it_reaches():
     runner = Runner(command_answer(0))
     runs("const s = \"it's; rm -rf /\";\n"
-         "await $`echo ${s} ${['a b', 2]} ${{raw: '| wc -l'}}`;\n"
+         "await $`echo ${s} ${['a b', 2]} ${$.raw('| wc -l')} ${{raw: '; id'}}`;\n"
          "await $`echo ${s}`.host('win').cwd('web');\n"
          "await $('ls -la', {timeout: 5000})", runner=runner)
     assert runner.calls == [
-        ("run_terminal_command", {"command": "echo 'it'\\''s; rm -rf /' 'a b' '2' | wc -l"}),
+        # Only $.raw is spliced as written; an object that has a raw key is just a value.
+        ("run_terminal_command", {"command": "echo 'it'\\''s; rm -rf /' 'a b' '2' | wc -l '[object Object]'"}),
         ("run_terminal_command", {"host": "win", "cwd": "web", "command": "echo 'it''s; rm -rf /'"}),
         ("run_terminal_command", {"timeout": 5000, "command": "ls -la"}),
+    ]
+
+
+def test_a_value_inside_quotes_of_the_template_is_escaped_for_those_quotes():
+    runner = Runner(command_answer(0))
+    runs("const x = 'a\"$(id)`b\\\\';\n"
+         "await $`grep \"${x}\" f`;\n"
+         "await $`grep '${\"it's\"}' f`;\n"
+         "await $`echo \"${x}\"`.host('win');\n"
+         "await $`echo ${'a\u2019; calc; \u2018'}`.host('win')", runner=runner)
+    assert [args["command"] for _, args in runner.calls] == [
+        'grep "a\\"\\$(id)\\`b\\\\" f',
+        "grep 'it'\\''s' f",
+        'echo "a`"`$(id)``b\\"',
+        "echo 'a\u2019\u2019; calc; \u2018\u2018'",
     ]
 
 
@@ -95,13 +111,16 @@ def test_exit_1_from_a_search_is_no_failure_but_any_other_throws_unless_nothrow(
     runner = Runner(command_answer(1, "nothing"))
     out = runs("const r = await $`grep -rn x src`; [r.exitCode, r.note.includes('no match')]",
                "(await sh('git diff --quiet'))",
+               "let a;\ntry { await sh('make && grep -q x f'); a = 'passed' } catch (e) { a = 'threw' }\na",
                "let m;\ntry { await $`make`; m = 'ran' } catch (e) { m = e.message.split('\\n')[0] }\nm",
                "(await $`make`.nothrow()).exitCode",
                runner=runner)
     assert json.loads(out[0]) == [1, True]
     assert out[1] == "nothing"
-    assert out[2] == "sh make: exited 1"
-    assert out[3] == "1"
+    # After && the exit 1 may be make's.
+    assert out[2] == "threw"
+    assert out[3] == "sh make: exited 1"
+    assert out[4] == "1"
 
 
 def test_edit_write_and_file_are_the_file_tools_underneath():
@@ -130,8 +149,65 @@ def test_web_results_reach_the_code_and_mark_the_value_untrusted():
     text, trace = asyncio.run(code_mode.run(json.dumps({
         "code": "const r = await web_search({queries: ['a']});\nconst p = await read_url('https://x.test');\nr.length > 0",
         "description": "Search"}), call=runner))
-    assert trace["status"] == "done" and text.startswith("[Fuse: this value holds text from the web")
+    assert trace["status"] == "done" and text.startswith("[Fuse: this value may hold text from the web")
     assert [name for name, _ in runner.calls] == ["web_search", "read_url"]
+
+
+def test_a_later_run_of_a_repl_that_read_the_web_is_marked_too():
+    runner = Runner(lambda name, args: ("1. A page https://x.test", {"name": name, "status": "done"}))
+    out = runs("page = await read_url('https://x.test'); 1", "page", runner=runner)
+    assert out[1].startswith("[Fuse: this value may hold text from the web")
+
+
+def test_code_a_run_left_going_cannot_call_tools_once_the_run_ended():
+    runner = Runner()
+    runs("(async () => { for (let i = 0; i < 50; i++) { try { await sleep(20); await read_file('late'); } catch (e) {} } })(); 'left'",
+         "await sleep(400); 'later'", runner=runner)
+    # The leftover loop's calls either went with the run still going or failed in the worker: none after it.
+    assert runner.calls.count(("read_file", {"path": "late"})) <= 20
+
+
+def test_an_account_past_its_share_of_kernels_makes_room_among_its_own(monkeypatch):
+    monkeypatch.setattr(code_mode, "KERNELS_PER_USER", 1)
+
+    async def go():
+        out = []
+        for key in (("u", 1, ""), ("u", 2, ""), ("u", 1, "")):
+            text, _ = await code_mode.run(json.dumps({"code": "globalThis.n = (globalThis.n || 0) + 1; n",
+                                                      "description": "Count"}), call=Runner(), kernel=key)
+            out.append(text)
+        return out
+
+    first, second, third = asyncio.run(go())
+    assert first.startswith("1") and second.startswith("1")
+    assert "restarted (other chats needed the server's REPL slots)" in third and "\n1\n" in third
+
+
+def test_a_turn_stopped_while_the_run_moves_to_the_background_leaves_no_run_behind():
+    moves = Moves()
+    held = asyncio.Event()
+
+    async def slow(name, args):
+        held.set()
+        await asyncio.sleep(30)
+        return "ok", {"name": name, "status": "done"}
+
+    async def go():
+        task = asyncio.ensure_future(code_mode.run(json.dumps({
+            "code": "await read_file('a'); 1", "description": "Slow", "timeout": 1000}),
+            call=slow, kernel=("u", 1, ""), background=moves.background))
+        await held.wait()
+        await asyncio.sleep(1.3)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        kernel = code_mode._pool.get(("u", 1, ""))
+        return kernel is None or not kernel.active(), moves.jobs
+
+    idle, jobs = asyncio.run(go())
+    assert idle and jobs == {}
 
 
 class Moves:

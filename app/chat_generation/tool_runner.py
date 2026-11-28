@@ -424,12 +424,16 @@ async def run_tools(
 
             run_coding = bool(session.get("coding")) if session else coding
             if job.name == "run_code" and not job.parent and run_coding:
-                # The chat's REPL; a subagent shares its parent's thread, so it gets one of its own.
-                scope = str(session.get("run_id") or "") if (session.get("requester") or {}).get("role") == "subagent" else ""
+                # The chat's REPL; a subagent shares its parent's thread, so it gets one of its own
+                # (one with no run id gets a REPL for this call alone, never the main agent's).
+                agent_run = str(session.get("run_id") or "")
+                subagent = (session.get("requester") or {}).get("role") == "subagent"
+                kernel = None if not thread_id or (subagent and not agent_run) else (
+                    user_id, thread_id, f"agent:{agent_run}" if subagent else "")
                 bound = session.get("bound_host_id") if session else bound_host_id
                 text, trace = await code_mode.run(
                     arguments, call=lambda name, args: run_child(job, name, args), paused=lambda: bool(asking),
-                    owner=(user_id, thread_id), kernel=(user_id, thread_id, scope) if thread_id else None,
+                    owner=(user_id, thread_id), kernel=kernel,
                     background=code_background(job, run_coding) if thread_id else None,
                     shells=await asyncio.to_thread(code_mode.shells, user_id, bound),
                 )
@@ -695,7 +699,9 @@ async def run_tools(
 
             async def runner(sink):
                 text, ok = await finish()
-                # The code held stand-ins; the stored result reads real values, as a run_code row does.
+                # Checked like a run_code result in the round; the code held stand-ins, and the
+                # stored result reads real values, as a run_code row does.
+                text = injection_probe.annotate(text)
                 held = await asyncio.to_thread(secret_guard.map_for, user_id)
                 return SimpleNamespace(exit_status=0 if ok else 1, output=secret_guard.restore_text(held, text))
 

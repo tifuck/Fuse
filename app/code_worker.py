@@ -6,7 +6,9 @@ sandboxed the worker answers {"ready": true}; the parent then sends runs:
 "powershell"}}. Each helper call goes out as {"call": k, "run": n, "name":
 ..., "args": "<json>", "pending": [that run's calls still without a reply]}
 and waits for {"reply": k, "body": "<json>"}; a run ends with {"done":
-<outcome>, "run": n}, whose "kind" (memory) only the worker sets. Runs share
+<outcome>, "run": n}, whose "kind" (memory) only the worker sets, and
+{"end": n} tells the worker a run the parent ended is over (code it left
+going calls with the newest live run, or fails without a round trip). Runs share
 one context, so top-level declarations persist from run to run
 (__fuse_transform) and a run moved to the background goes on beside the
 next. The worker has no tools of its own: the parent runs every call as a
@@ -100,6 +102,8 @@ class ShellOutput {
   lines() { const l = this.stdout.split("\n"); if (l.length && l[l.length - 1] === "") l.pop(); return l; }
   json() { return JSON.parse(this.stdout); }
   toJSON() { return this.output; }
+  // In a template, as the shell's own $(…) gives it: without its last newline.
+  toString() { return this.stdout.replace(/\n$/, ""); }
 }
 const flat = (x) => x instanceof ShellOutput ? x.output : x;
 
@@ -133,20 +137,46 @@ const shape = (v, budget) => {
   return [parts.map((p, i) => p[0] + cut(p[1], share[i])).join("\n"), full];
 };
 
-// A command line's last command, for the exit 1 that means "no match" or "they differ".
+// Exit 1 that means "no match" or "they differ": only for one pipeline whose last
+// command is one of these. After && or ; an exit 1 may be an earlier command's.
 const NO_MATCH = /^(?:grep|egrep|fgrep|rg|find|diff|test|\[|git\s+(?:diff|grep))(?:\s|$)/;
 const noMatch = (command, code) => {
-  if (code !== 1) return false;
-  const parts = String(command).split(/\|\||&&|[|;\n]/).map((s) => s.trim()).filter(Boolean);
+  if (code !== 1 || /&&|\|\||[;&\n]/.test(String(command).replace(/[0-9]*>&[0-9]+/g, ""))) return false;
+  const parts = String(command).split("|").map((s) => s.trim()).filter(Boolean);
   const last = (parts.length ? parts[parts.length - 1] : "").replace(/^(?:!\s*)?(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/, "");
   return NO_MATCH.test(last);
 };
-const QUOTE = {
-  bash: (s) => "'" + s.replace(/'/g, "'\\''") + "'",
-  powershell: (s) => "'" + s.replace(/'/g, "''") + "'",
+// Text $`…` splices as written: only $.raw(s), never a value that merely has a raw key.
+class Raw { constructor(s) { this.s = String(s); } }
+// PowerShell also takes the curly quotes for its own.
+const PS_SINGLE = "'\u2018\u2019\u201A\u201B", PS_DOUBLE = '"\u201C\u201D\u201E';
+// Where a template's text leaves the shell: outside quotes (""), in '…' or in "…".
+const quoteState = (text, shell, state) => {
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (shell === "powershell") {
+      if (state === "'") { if (PS_SINGLE.includes(c)) { if (PS_SINGLE.includes(text[i + 1])) i++; else state = ""; } }
+      else if (state === '"') { if (c === "`") i++; else if (PS_DOUBLE.includes(c)) { if (PS_DOUBLE.includes(text[i + 1])) i++; else state = ""; } }
+      else if (c === "`") i++;
+      else if (PS_SINGLE.includes(c)) state = "'";
+      else if (PS_DOUBLE.includes(c)) state = '"';
+    } else if (state === "'") { if (c === "'") state = ""; }
+    else if (state === '"') { if (c === "\\") i++; else if (c === '"') state = ""; }
+    else if (c === "\\") i++;
+    else if (c === "'" || c === '"') state = c;
+  }
+  return state;
 };
-const quoted = (v, q) => v !== null && typeof v === "object" && !Array.isArray(v) && "raw" in v ? String(v.raw)
-  : Array.isArray(v) ? v.map((x) => quoted(x, q)).join(" ") : q(String(v));
+// A value as literal text where it lands: a quoted word of its own outside quotes,
+// escaped for the quote it sits in otherwise.
+const ESCAPE = {
+  bash: {"": (s) => "'" + s.replace(/'/g, "'\\''") + "'", "'": (s) => s.replace(/'/g, "'\\''"),
+         '"': (s) => s.replace(/[\\"$`]/g, "\\$&")},
+  powershell: {"": (s) => "'" + s.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&") + "'",
+               "'": (s) => s.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&"),
+               '"': (s) => s.replace(/[`"$\u201C\u201D\u201E]/g, "`$&")},
+};
+const quoted = (v, q) => v instanceof Raw ? v.s : Array.isArray(v) ? v.map((x) => quoted(x, q)).join(" ") : q(String(v));
 const shError = (command, what, out) => {
   let line = String(command).split(/\s+/).join(" ").trim();
   if (line.length > 80) line = line.slice(0, 80) + "…";
@@ -158,7 +188,7 @@ const shError = (command, what, out) => {
 };
 
 const shell = (h, shells) => {
-  const quoteFor = (host) => QUOTE[shells[String(host || "").trim().toLowerCase()] || shells[""] || "bash"] || QUOTE.bash;
+  const shellOf = (host) => (shells[String(host || "").trim().toLowerCase()] || shells[""]) === "powershell" ? "powershell" : "bash";
   class ShellPromise {
     constructor(build, opts) { this.build = build; this.opts = Object.assign({}, opts); this.throwing = true; this.started = null; }
     nothrow() { this.throwing = false; return this; }
@@ -170,7 +200,7 @@ const shell = (h, shells) => {
     env(names) { this.opts.env = names; return this; }
     start() {
       if (!this.started) this.started = (async () => {
-        const command = this.build(quoteFor(this.opts.host));
+        const command = this.build(shellOf(this.opts.host));
         const r = await h.run_terminal_command(Object.assign({}, this.opts, {command}));
         const code = typeof r.exit_code === "number" ? r.exit_code : null;
         const note = r.status === "running"
@@ -193,31 +223,55 @@ const shell = (h, shells) => {
   }
   const $ = (first, ...rest) => {
     if (Array.isArray(first) && Array.isArray(first.raw)) {
-      return new ShellPromise((q) => first.raw.map((s, i) => s.replace(/\\`/g, "`").replace(/\\\$\{/g, "${")
-        + (i < rest.length ? quoted(rest[i], q) : "")).join(""), {});
+      return new ShellPromise((kind) => {
+        let state = "", out = "";
+        first.raw.forEach((s, i) => {
+          const text = s.replace(/\\`/g, "`").replace(/\\\$\{/g, "${");
+          state = quoteState(text, kind, state);
+          out += text + (i < rest.length ? quoted(rest[i], ESCAPE[kind][state]) : "");
+        });
+        return out;
+      }, {});
     }
     const opts = typeof rest[0] === "number" ? {timeout: rest[0]} : Object.assign({}, rest[0] || {});
     return new ShellPromise(() => String(first), opts);
   };
-  $.escape = (s) => quoteFor("")(String(s));
+  $.escape = (s) => ESCAPE[shellOf("")][""](String(s));
+  $.raw = (s) => new Raw(s);
   return $;
 };
 
+// Runs whose code has not settled, and every run number already given helpers.
+const live = new Set(), issued = new Set();
+hidden("__fuse_end", (run) => { live.delete(run); });
 hidden("__fuse_helpers", (run, shells) => {
+  // Once per run, for its own script's head: code cannot take another run's helpers.
+  if (!Number.isInteger(run) || issued.has(run)) throw new Error("__fuse_helpers is run_code's own");
+  issued.add(run);
+  live.add(run);
+  // A call from a run that has ended goes with the newest run still going (a function an
+  // earlier run defined, called now); with none, it fails here, without a round trip.
+  const via = () => {
+    if (live.has(run)) return run;
+    const newest = Math.max(-1, ...live);
+    if (newest < 0) throw new Error("no run_code call is running to make this call: code an earlier run left running cannot call tools (await every call).");
+    return newest;
+  };
   const logs = [];
   const say = (...parts) => {
     logs.push(parts.map((p) => p instanceof ShellOutput ? p.output : p !== null && typeof p === "object" && !(p instanceof Error)
       ? JSON.stringify(p, json) : String(p)).join(" "));
   };
   const send = async (name, args) => {
-    const reply = JSON.parse(await call(run, name, JSON.stringify(args === undefined ? {} : args)));
+    const reply = JSON.parse(await call(via(), name, JSON.stringify(args === undefined ? {} : args)));
     if (!reply.ok) throw new Error(reply.error);
     return reply.value;
   };
   const h = {__logs: logs, log: say, console: {log: say, info: say, warn: say, error: say, debug: say}};
   // The raw bridge, as __h.__call(name, argsJson): the parent checks every call it gets, so this reaches nothing
   // the helpers do not (the tests send malformed calls through it).
-  h.__call = (name, raw) => call(run, String(name), String(raw));
+  h.__call = async (name, raw) => call(via(), String(name), String(raw));
+  h.__run = run;
   for (const [name, key] of HELPERS) {
     h[name] = async (args, more) => {
       // A string and options, merged as sh merges them: grep("TODO", {path: "src"}).
@@ -353,6 +407,7 @@ hidden("__fuse_settle", async (v, h, budget) => {
     v = Object.fromEntries(await Promise.all(Object.entries(v).map(async ([k, x]) =>
       [k, flat(x !== null && typeof x === "object" && typeof x.then === "function" ? await x : x)])));
   }
+  live.delete(h.__run);
   try {
     if (v === undefined) return JSON.stringify({ok: true, undef: true, value: "", logs: h.__logs});
     const [value, full] = shape(v, budget);
@@ -363,11 +418,11 @@ hidden("__fuse_settle", async (v, h, budget) => {
   }
 });
 
-hidden("__fuse_fail", (e, h) => JSON.stringify(e && e.__fuse_sh
+hidden("__fuse_fail", (e, h) => (live.delete(h.__run), JSON.stringify(e && e.__fuse_sh
   // An sh failure: the message (with the command's output) apart from the stack lines.
   ? {ok: false, error: e.message, frames: String(e.stack).startsWith(String(e)) ? String(e.stack).slice(String(e).length) : "", logs: h.__logs}
   : {ok: false, error: String((e && e.stack) || e) ||
-     "the code threw " + JSON.stringify(e) + ", which has no message; throw an Error with one", logs: h.__logs}));
+     "the code threw " + JSON.stringify(e) + ", which has no message; throw an Error with one", logs: h.__logs})));
 })();
 //# sourceURL=fuse-prelude.js
 """.replace("%FIX%", _FIX).replace("%SH_TAIL%", str(SH_TAIL)).replace("%RETURN%", json.dumps(RETURN)).replace(
@@ -481,6 +536,8 @@ async def _main() -> None:
 
     async def bridge(run, name, args_json):
         nonlocal count
+        if type(run) is not int:
+            return json.dumps({"ok": False, "error": "no such run"})
         args_json = str(args_json)
         if len(args_json) > ARG_CHARS:
             return json.dumps({"ok": False, "error": f"{name}'s arguments are over {ARG_CHARS} characters; split the "
@@ -553,6 +610,9 @@ async def _main() -> None:
                     _, fut = waiting.pop(int(msg["reply"]), (0, None))
                     if fut is not None and not fut.done():
                         fut.set_result(str(msg["body"]))
+                elif "end" in msg:
+                    # The parent ended the run: code it left going can no longer call as it.
+                    ctx.eval(f"__fuse_end({int(msg['end'])})")
                 elif "run" in msg:
                     task = asyncio.ensure_future(start(int(msg["run"]), str(msg.get("code") or ""),
                                                        int(msg.get("budget") or RESULT_CHARS), dict(msg.get("shells") or {})))

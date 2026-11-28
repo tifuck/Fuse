@@ -152,7 +152,8 @@ classes become globals of the context, so the chat's next run sees them, and
 a last expression statement is the run's value (`return` still works);
 promises inside a returned object are awaited. Code acorn cannot parse goes to
 V8 as written (its syntax error, or a run without those forms). At most
-`KERNELS` (8) live on the server: a new chat evicts the longest idle one or
+`KERNELS` (8) live on the server and `KERNELS_PER_USER` (4) per account: a new
+chat evicts the longest idle one (its account's own when it is at its share) or
 waits `SLOT_WAIT_S` (else `busy`); one idle for `IDLE_S` ends; a run that will
 not stop (an endless loop past its deadline or a stop) ends with its kernel.
 Whenever a chat's kernel ended, its next run starts with a `[Fuse: this
@@ -172,7 +173,8 @@ prompt waits. The helpers are the file and shell tools, `web_search`,
 a string (the path, pattern, command, query, url, prompt or id) and an
 optional options object, merged as `sh` merges them; and on top of them `$`
 (a tagged template that quotes each `${}` value for the host's shell, bash or
-PowerShell from `code_mode.shells`), `sh`, `edit`, `write`, `file`,
+PowerShell from `code_mode.shells`, or escapes it for the quotes it sits in;
+only `$.raw(s)` is spliced as written), `sh`, `edit`, `write`, `file`,
 `preview`, `sleep` and `log`. `$` and `sh` treat exit 1 from grep, rg, find,
 diff or test as no match, not a failure. A background command
 (`background: true`) is allowed and answers `running` with its id. The value
